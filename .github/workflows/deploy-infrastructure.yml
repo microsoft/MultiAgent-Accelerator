@@ -1,0 +1,186 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/bicep/**'
+      - '.github/workflows/deploy-infrastructure.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/bicep/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  LOCATION: centralus
+  PROJECT_NAME: multiagent-test
+  RESOURCE_GROUP: multiagent-github-test-rg
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Bicep Templates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group for Validation
+        run: |
+          az group create \
+            --name ${{ env.RESOURCE_GROUP }} \
+            --location ${{ env.LOCATION }} \
+            --tags Environment=dev Project=MultiAgent-AKS-MAF ManagedBy=GitHubActions
+
+      - name: Validate Bicep files
+        run: |
+          az bicep build --file infrastructure/bicep/main-rg.bicep
+          az deployment group validate \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file infrastructure/bicep/main-rg.bicep \
+            --parameters environment=dev projectName=${{ env.PROJECT_NAME }}
+
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    environment:
+      name: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure Resource Group Exists
+        run: |
+          az group create \
+            --name ${{ env.RESOURCE_GROUP }} \
+            --location ${{ env.LOCATION }}
+
+      - name: Deploy Infrastructure
+        id: deploy
+        run: |
+          az deployment group create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file infrastructure/bicep/main-rg.bicep \
+            --parameters environment=dev \
+            --parameters projectName=${{ env.PROJECT_NAME }} \
+            --name "multiagent-dev-$(date +%Y%m%d-%H%M%S)" \
+            --output json > deployment-output.json
+          
+          cat deployment-output.json
+
+      - name: Extract Outputs
+        id: outputs
+        run: |
+          echo "resource_group=${{ env.RESOURCE_GROUP }}" >> $GITHUB_OUTPUT
+          echo "aks_cluster=$(jq -r '.properties.outputs.aksClusterName.value' deployment-output.json)" >> $GITHUB_OUTPUT
+          echo "acr_login_server=$(jq -r '.properties.outputs.acrLoginServer.value' deployment-output.json)" >> $GITHUB_OUTPUT
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ steps.outputs.outputs.resource_group }} \
+            --name ${{ steps.outputs.outputs.aks_cluster }} \
+            --overwrite-existing
+
+      - name: Verify Deployment
+        run: |
+          kubectl get nodes
+          kubectl get namespaces
+
+      - name: Save Deployment Info
+        run: |
+          echo "Deployment completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "- Resource Group: ${{ steps.outputs.outputs.resource_group }}" >> $GITHUB_STEP_SUMMARY
+          echo "- AKS Cluster: ${{ steps.outputs.outputs.aks_cluster }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ACR: ${{ steps.outputs.outputs.acr_login_server }}" >> $GITHUB_STEP_SUMMARY
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure Resource Group Exists
+        run: |
+          az group create \
+            --name multiagent-staging-rg \
+            --location ${{ env.LOCATION }}
+
+      - name: Deploy Infrastructure
+        run: |
+          az deployment group create \
+            --resource-group multiagent-staging-rg \
+            --template-file infrastructure/bicep/main-rg.bicep \
+            --parameters environment=staging \
+            --parameters projectName=${{ env.PROJECT_NAME }} \
+            --name "multiagent-staging-$(date +%Y%m%d-%H%M%S)"
+
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment:
+      name: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure Resource Group Exists
+        run: |
+          az group create \
+            --name multiagent-prod-rg \
+            --location ${{ env.LOCATION }}
+
+      - name: Deploy Infrastructure
+        run: |
+          az deployment group create \
+            --resource-group multiagent-prod-rg \
+            --template-file infrastructure/bicep/main-rg.bicep \
+            --parameters environment=prod \
+            --parameters projectName=${{ env.PROJECT_NAME }} \
+            --name "multiagent-prod-$(date +%Y%m%d-%H%M%S)"

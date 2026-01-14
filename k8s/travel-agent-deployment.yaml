@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-agent
+  namespace: multiagent
+  labels:
+    app: travel-agent
+    component: agent
+    azure.workload.identity/use: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: travel-agent
+  template:
+    metadata:
+      labels:
+        app: travel-agent
+        component: agent
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: multiagent-sa
+      containers:
+      - name: travel-agent
+        image: ${ACR_NAME}.azurecr.io/travel-agent:latest
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          value: "https://${OPENAI_NAME}.openai.azure.com"
+        - name: AZURE_OPENAI_DEPLOYMENT
+          value: "gpt-4o"
+        - name: CURRENCY_MCP_URL
+          value: "http://currency-mcp-service:8001"
+        - name: ACTIVITY_MCP_URL
+          value: "http://activity-mcp-service:8002"
+        - name: PORT
+          value: "8080"
+        - name: AZURE_CLIENT_ID
+          value: "${WORKLOAD_IDENTITY_CLIENT_ID}"
+        - name: AZURE_TENANT_ID
+          value: "${AZURE_TENANT_ID}"
+        - name: AZURE_FEDERATED_TOKEN_FILE
+          value: "/var/run/secrets/azure/tokens/azure-identity-token"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        volumeMounts:
+        - name: azure-identity-token
+          mountPath: /var/run/secrets/azure/tokens
+          readOnly: true
+      volumes:
+      - name: azure-identity-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: azure-identity-token
+              expirationSeconds: 3600
+              audience: api://AzureADTokenExchange
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: travel-agent-service
+  namespace: multiagent
+  labels:
+    app: travel-agent
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: travel-agent

@@ -1,0 +1,87 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: view-responses
+  namespace: multiagent
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: multiagent-sa
+      containers:
+      - name: response-viewer
+        image: python:3.11-slim
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            # Install required packages
+            pip install azure-servicebus azure-identity aiohttp
+            
+            # Create Python script to view responses
+            cat > /tmp/view_responses.py << 'EOF'
+            import asyncio
+            from azure.identity.aio import DefaultAzureCredential
+            from azure.servicebus.aio import ServiceBusClient
+
+            async def main():
+                print("📥 Connecting to Service Bus...")
+                credential = DefaultAzureCredential()
+                
+                async with ServiceBusClient(
+                    fully_qualified_namespace="${SERVICEBUS_NAMESPACE}",
+                    credential=credential
+                ) as client:
+                    async with client.get_queue_receiver(
+                        queue_name="agent-responses",
+                        max_wait_time=30
+                    ) as receiver:
+                        
+                        print("🔍 Receiving messages (max 10)...\n")
+                        messages = await receiver.receive_messages(
+                            max_message_count=10,
+                            max_wait_time=30
+                        )
+                        
+                        if not messages:
+                            print("📭 No messages in queue")
+                            return
+                        
+                        for i, msg in enumerate(messages, 1):
+                            print(f"\n{'='*80}")
+                            print(f"📬 Response {i}/{len(messages)}")
+                            print(f"{'='*80}")
+                            
+                            # Get message properties
+                            user_id = msg.application_properties.get("user_id", "unknown") if msg.application_properties else "unknown"
+                            agent = msg.application_properties.get("agent_used", "unknown") if msg.application_properties else "unknown"
+                            task = msg.application_properties.get("original_task", "N/A") if msg.application_properties else "N/A"
+                            
+                            print(f"User ID:       {user_id}")
+                            print(f"Agent Used:    {agent}")
+                            print(f"Original Task: {task}")
+                            print(f"\n💬 Response:")
+                            print(str(msg))
+                            print(f"{'='*80}")
+                            
+                            # Complete message (remove from queue)
+                            await receiver.complete_message(msg)
+                        
+                        print(f"\n✅ Received {len(messages)} response(s)")
+
+            if __name__ == "__main__":
+                asyncio.run(main())
+            EOF
+            
+            # Run the script
+            python3 /tmp/view_responses.py
+        env:
+        - name: SERVICEBUS_NAMESPACE
+          value: "${SERVICEBUS_NAMESPACE}"
+        - name: AZURE_CLIENT_ID
+          value: "${WORKLOAD_IDENTITY_CLIENT_ID}"
+        - name: AZURE_TENANT_ID
+          value: "${AZURE_TENANT_ID}"
+      restartPolicy: Never
+  backoffLimit: 1

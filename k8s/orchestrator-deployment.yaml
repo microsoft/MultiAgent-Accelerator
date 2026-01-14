@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: multiagent
+  labels:
+    app: orchestrator
+    component: multi-agent
+    azure.workload.identity/use: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: multi-agent
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: multiagent-sa
+      containers:
+      - name: orchestrator
+        image: ${ACR_NAME}.azurecr.io/orchestrator:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PORT
+          value: "8000"
+        - name: AGENT_ENDPOINTS
+          value: "http://travel-agent-service/.well-known/agent.json"
+        - name: SERVICEBUS_NAMESPACE
+          value: "${SERVICEBUS_NAMESPACE}"
+        - name: USE_MANAGED_IDENTITY
+          value: "true"
+        - name: AZURE_CLIENT_ID
+          value: "${WORKLOAD_IDENTITY_CLIENT_ID}"
+        - name: AZURE_TENANT_ID
+          value: "${AZURE_TENANT_ID}"
+        - name: AZURE_FEDERATED_TOKEN_FILE
+          value: "/var/run/secrets/azure/tokens/azure-identity-token"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: azure-identity-token
+          mountPath: /var/run/secrets/azure/tokens
+          readOnly: true
+      volumes:
+      - name: azure-identity-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: azure-identity-token
+              expirationSeconds: 3600
+              audience: api://AzureADTokenExchange
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-service
+  namespace: multiagent
+  labels:
+    app: orchestrator
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: orchestrator

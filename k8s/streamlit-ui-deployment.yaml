@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamlit-ui
+  namespace: multiagent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: streamlit-ui
+  template:
+    metadata:
+      labels:
+        app: streamlit-ui
+    spec:
+      containers:
+      - name: streamlit
+        image: acrmadev2jhf6weu.azurecr.io/streamlit-ui:latest
+        ports:
+        - containerPort: 8501
+          name: http
+        env:
+        - name: ORCHESTRATOR_URL
+          value: "http://orchestrator-service"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamlit-ui-service
+  namespace: multiagent
+spec:
+  type: LoadBalancer
+  selector:
+    app: streamlit-ui
+  ports:
+  - port: 80
+    targetPort: 8501
+    protocol: TCP
+    name: http

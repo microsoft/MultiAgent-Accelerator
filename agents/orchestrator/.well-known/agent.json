@@ -1,0 +1,78 @@
+{
+  "name": "orchestrator",
+  "description": "Multi-agent orchestrator that discovers and coordinates specialized agents using A2A protocol",
+  "url": "http://orchestrator:8000/",
+  "version": "1.0.0",
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "capabilities": {
+    "streaming": true,
+    "skills": [
+      {
+        "id": "agent_discovery",
+        "name": "Agent Discovery",
+        "description": "Discover available agents via A2A protocol and their capabilities",
+        "tags": ["discovery", "a2a", "agents", "coordination"],
+        "examples": [
+          "List available agents",
+          "What agents are available?",
+          "Show me agent capabilities"
+        ]
+      },
+      {
+        "id": "request_routing",
+        "name": "Request Routing",
+        "description": "Route user requests to the most appropriate specialized agent",
+        "tags": ["routing", "delegation", "orchestration"],
+        "examples": [
+          "Plan a trip to Paris",
+          "Convert 500 USD to EUR",
+          "Find restaurants in Tokyo"
+        ]
+      },
+      {
+        "id": "multi_agent_coordination",
+        "name": "Multi-Agent Coordination",
+        "description": "Coordinate multiple agents to fulfill complex requests",
+        "tags": ["coordination", "multi-agent", "workflow"],
+        "examples": [
+          "Plan a trip with budget conversion",
+          "Create itinerary with currency exchange"
+        ]
+      }
+    ],
+    "protocols": ["a2a", "http", "servicebus"]
+  },
+  "endpoints": {
+    "task": {
+      "url": "/task",
+      "method": "POST",
+      "description": "Execute a task by routing to appropriate agent"
+    },
+    "task_async": {
+      "url": "/task/async",
+      "method": "POST",
+      "description": "Queue a task for async processing via Service Bus"
+    },
+    "agents": {
+      "url": "/agents",
+      "method": "GET",
+      "description": "List all discovered agents"
+    },
+    "discover": {
+      "url": "/discover",
+      "method": "POST",
+      "description": "Trigger agent discovery"
+    },
+    "health": {
+      "url": "/health",
+      "method": "GET",
+      "description": "Health check"
+    }
+  },
+  "protocol": "a2a",
+  "contact": {
+    "author": "MAF Team",
+    "repository": "https://github.com/darkanita/MultiAgent-AKS-MAF"
+  }
+}

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: activity-mcp
+  namespace: multiagent
+  labels:
+    app: activity-mcp
+    component: mcp-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: activity-mcp
+  template:
+    metadata:
+      labels:
+        app: activity-mcp
+        component: mcp-server
+    spec:
+      containers:
+      - name: activity-mcp
+        image: ${ACR_NAME}.azurecr.io/activity-mcp:latest
+        ports:
+        - containerPort: 8002
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8002"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: activity-mcp-service
+  namespace: multiagent
+  labels:
+    app: activity-mcp
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  ports:
+  - port: 8002
+    targetPort: 8002
+    protocol: TCP
+    name: http
+  selector:
+    app: activity-mcp

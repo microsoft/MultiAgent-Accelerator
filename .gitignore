@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.local
+*.env
+deployment-info.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Azure
+deployment-output.json
+*.bicep.json
+
+# Kubernetes
+kubeconfig
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Node (for frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+*.whl
+dist/
+build/
+
+# Secrets and credentials
+*secret*
+*credentials*
+*_key
+*-key
+*.key
+!*_key.example
+!key-vault.bicep
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# Archived old code
+_archived/

@@ -1,0 +1,258 @@
+name: Deploy MCP Services to AKS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mcp_servers/**'
+      - 'agents/travel_agent/**'
+      - 'k8s/**'
+      - '.github/workflows/deploy-mcp-to-aks.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  RESOURCE_GROUP: multiagent-dev-rg
+  NAMESPACE: multiagent
+
+jobs:
+  deploy:
+    name: Build and Deploy to AKS
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC authentication
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Get Azure resource names
+        id: azure-resources
+        run: |
+          ACR_NAME=$(az acr list -g $RESOURCE_GROUP --query '[0].name' -o tsv)
+          AKS_NAME=$(az aks list -g $RESOURCE_GROUP --query '[0].name' -o tsv)
+          OPENAI_NAME=$(az cognitiveservices account list -g $RESOURCE_GROUP --query "[?kind=='OpenAI'].name" -o tsv)
+          
+          echo "acr-name=$ACR_NAME" >> $GITHUB_OUTPUT
+          echo "aks-name=$AKS_NAME" >> $GITHUB_OUTPUT
+          echo "openai-name=$OPENAI_NAME" >> $GITHUB_OUTPUT
+          
+          echo "✅ Azure Resources Detected:"
+          echo "  ACR: $ACR_NAME"
+          echo "  AKS: $AKS_NAME"
+          echo "  OpenAI: $OPENAI_NAME"
+      
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name ${{ steps.azure-resources.outputs.acr-name }}
+      
+      - name: Build and push Currency MCP image
+        run: |
+          ACR_LOGIN_SERVER=${{ steps.azure-resources.outputs.acr-name }}.azurecr.io
+          
+          docker build \
+            -t $ACR_LOGIN_SERVER/currency-mcp:${{ github.sha }} \
+            -t $ACR_LOGIN_SERVER/currency-mcp:latest \
+            -f mcp_servers/currency_mcp/Dockerfile \
+            mcp_servers/currency_mcp
+          
+          docker push $ACR_LOGIN_SERVER/currency-mcp:${{ github.sha }}
+          docker push $ACR_LOGIN_SERVER/currency-mcp:latest
+          
+          echo "✅ Currency MCP image pushed"
+      
+      - name: Build and push Activity MCP image
+        run: |
+          ACR_LOGIN_SERVER=${{ steps.azure-resources.outputs.acr-name }}.azurecr.io
+          
+          docker build \
+            -t $ACR_LOGIN_SERVER/activity-mcp:${{ github.sha }} \
+            -t $ACR_LOGIN_SERVER/activity-mcp:latest \
+            -f mcp_servers/activity_mcp/Dockerfile \
+            mcp_servers/activity_mcp
+          
+          docker push $ACR_LOGIN_SERVER/activity-mcp:${{ github.sha }}
+          docker push $ACR_LOGIN_SERVER/activity-mcp:latest
+          
+          echo "✅ Activity MCP image pushed"
+      
+      - name: Build and push Travel Agent image
+        run: |
+          ACR_LOGIN_SERVER=${{ steps.azure-resources.outputs.acr-name }}.azurecr.io
+          
+          docker build \
+            -t $ACR_LOGIN_SERVER/travel-agent:${{ github.sha }} \
+            -t $ACR_LOGIN_SERVER/travel-agent:latest \
+            -f agents/travel_agent/Dockerfile \
+            agents/travel_agent
+          
+          docker push $ACR_LOGIN_SERVER/travel-agent:${{ github.sha }}
+          docker push $ACR_LOGIN_SERVER/travel-agent:latest
+          
+          echo "✅ Travel Agent image pushed"
+      
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group $RESOURCE_GROUP \
+            --name ${{ steps.azure-resources.outputs.aks-name }} \
+            --overwrite-existing
+      
+      - name: Get Workload Identity configuration
+        id: workload-identity
+        run: |
+          WORKLOAD_IDENTITY_CLIENT_ID=$(az identity show \
+            -g $RESOURCE_GROUP \
+            -n multiagent-dev-identity \
+            --query clientId -o tsv)
+          
+          AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
+          
+          echo "client-id=$WORKLOAD_IDENTITY_CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "tenant-id=$AZURE_TENANT_ID" >> $GITHUB_OUTPUT
+          
+          echo "✅ Workload Identity configured"
+      
+      - name: Create namespace and service account
+        run: |
+          cat k8s/namespace-and-sa.yaml | \
+            sed "s/REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID/${{ steps.workload-identity.outputs.client-id }}/g" | \
+            kubectl apply -f -
+          
+          echo "✅ Namespace and service account created"
+      
+      - name: Deploy Currency MCP
+        run: |
+          cat k8s/currency-mcp-deployment.yaml | \
+            sed "s/\${ACR_NAME}/${{ steps.azure-resources.outputs.acr-name }}/g" | \
+            kubectl apply -f -
+          
+          echo "✅ Currency MCP deployed"
+      
+      - name: Deploy Activity MCP
+        run: |
+          cat k8s/activity-mcp-deployment.yaml | \
+            sed "s/\${ACR_NAME}/${{ steps.azure-resources.outputs.acr-name }}/g" | \
+            kubectl apply -f -
+          
+          echo "✅ Activity MCP deployed"
+      
+      - name: Deploy Travel Agent
+        run: |
+          cat k8s/travel-agent-deployment.yaml | \
+            sed "s/\${ACR_NAME}/${{ steps.azure-resources.outputs.acr-name }}/g" | \
+            sed "s/\${OPENAI_NAME}/${{ steps.azure-resources.outputs.openai-name }}/g" | \
+            sed "s/\${WORKLOAD_IDENTITY_CLIENT_ID}/${{ steps.workload-identity.outputs.client-id }}/g" | \
+            sed "s/\${AZURE_TENANT_ID}/${{ steps.workload-identity.outputs.tenant-id }}/g" | \
+            kubectl apply -f -
+          
+          echo "✅ Travel Agent deployed"
+      
+      - name: Wait for deployments to be ready
+        run: |
+          echo "⏳ Waiting for deployments to be ready..."
+          
+          kubectl wait --for=condition=available \
+            --timeout=300s \
+            deployment/currency-mcp \
+            deployment/activity-mcp \
+            deployment/travel-agent \
+            -n $NAMESPACE || true
+          
+          echo ""
+          echo "📊 Deployment Status:"
+          kubectl get deployments -n $NAMESPACE
+          
+          echo ""
+          echo "🔍 Pod Status:"
+          kubectl get pods -n $NAMESPACE
+      
+      - name: Get Travel Agent external IP
+        id: get-ip
+        run: |
+          echo "⏳ Waiting for external IP..."
+          
+          for i in {1..30}; do
+            EXTERNAL_IP=$(kubectl get service travel-agent-service -n $NAMESPACE \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            
+            if [ -n "$EXTERNAL_IP" ]; then
+              echo "external-ip=$EXTERNAL_IP" >> $GITHUB_OUTPUT
+              echo "✅ Travel Agent is accessible at: http://$EXTERNAL_IP"
+              break
+            fi
+            
+            echo "  Attempt $i/30: Still waiting..."
+            sleep 10
+          done
+          
+          if [ -z "$EXTERNAL_IP" ]; then
+            echo "⚠️ External IP not assigned yet. Check later with:"
+            echo "  kubectl get service travel-agent-service -n $NAMESPACE"
+          fi
+      
+      - name: Test deployment
+        if: steps.get-ip.outputs.external-ip != ''
+        run: |
+          EXTERNAL_IP=${{ steps.get-ip.outputs.external-ip }}
+          
+          echo "🧪 Testing deployment..."
+          
+          # Test health endpoint
+          curl -f -s http://$EXTERNAL_IP/health || echo "Health check failed"
+          
+          # Test currency exchange
+          RESPONSE=$(curl -s -X POST http://$EXTERNAL_IP/task \
+            -H "Content-Type: application/json" \
+            -d '{"task": "What is the exchange rate from USD to EUR?"}')
+          
+          echo "Response: $RESPONSE"
+          
+          if echo "$RESPONSE" | grep -q "EUR"; then
+            echo "✅ Deployment test passed!"
+          else
+            echo "❌ Deployment test failed"
+            exit 1
+          fi
+      
+      - name: Deployment summary
+        run: |
+          echo "## 🎉 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Deployed Images" >> $GITHUB_STEP_SUMMARY
+          echo "- \`currency-mcp:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`activity-mcp:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`travel-agent:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 Access" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ steps.get-ip.outputs.external-ip }}" ]; then
+            echo "Travel Agent: http://${{ steps.get-ip.outputs.external-ip }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "External IP pending - check service status" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Resources" >> $GITHUB_STEP_SUMMARY
+          echo "- Resource Group: \`$RESOURCE_GROUP\`" >> $GITHUB_STEP_SUMMARY
+          echo "- AKS Cluster: \`${{ steps.azure-resources.outputs.aks-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Namespace: \`$NAMESPACE\`" >> $GITHUB_STEP_SUMMARY

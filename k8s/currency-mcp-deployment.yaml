@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: currency-mcp
+  namespace: multiagent
+  labels:
+    app: currency-mcp
+    component: mcp-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: currency-mcp
+  template:
+    metadata:
+      labels:
+        app: currency-mcp
+        component: mcp-server
+    spec:
+      containers:
+      - name: currency-mcp
+        image: ${ACR_NAME}.azurecr.io/currency-mcp:latest
+        ports:
+        - containerPort: 8001
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8001"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: currency-mcp-service
+  namespace: multiagent
+  labels:
+    app: currency-mcp
+spec:
+  type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  selector:
+    app: currency-mcp
