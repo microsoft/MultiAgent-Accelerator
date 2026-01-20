@@ -44,13 +44,13 @@ A production-ready multi-agent orchestration system built with **Microsoft Agent
 
 ### Components
 
-- **Streamlit UI** (AKS): User interface for multi-agent interaction
-- **Orchestrator** (AKS): Routes tasks to appropriate agents using A2A protocol
-- **Travel Agent** (AKS): Handles travel planning, currency conversion, restaurant recommendations
+- **Streamlit UI** (AKS or ACA): User interface for multi-agent interaction
+- **Orchestrator** (AKS or ACA): Routes tasks to appropriate agents using A2A protocol
+- **Travel Agent** (AKS or ACA): Handles travel planning, currency conversion, restaurant recommendations
 - **Burger Agent** (GCP Cloud Run): Processes burger orders - [Source Code](https://github.com/alphinside/purchasing-concierge-intro-a2a-codelab-starter)
 - **Pizza Agent** (GCP Cloud Run): Processes pizza orders - [Source Code](https://github.com/alphinside/purchasing-concierge-intro-a2a-codelab-starter)
-- **Currency MCP** (AKS): Real-time exchange rates via Frankfurter API
-- **Activity MCP** (AKS): Travel itinerary and activity planning
+- **Currency MCP** (AKS or ACA): Real-time exchange rates via Frankfurter API
+- **Activity MCP** (AKS or ACA): Travel itinerary and activity planning
 
 ### Protocol Support
 
@@ -133,7 +133,7 @@ MultiAgent-AKS-MAF/
 - **A2A Protocol**: Agent-to-Agent communication standard (Simple + SDK formats)
 - **MCP (Model Context Protocol)**: Tool/plugin architecture
 - **Azure Service Bus**: Message queue for external communication
-- **Azure Kubernetes Service (AKS)**: Container orchestration
+- **Azure Kubernetes Service (AKS) or Azure Container Apps (ACA)**: Container orchestration
 - **Google Cloud Run**: Serverless container hosting (for food ordering agents)
 - **Azure Managed Identity**: Secure authentication
 
@@ -146,7 +146,7 @@ MultiAgent-AKS-MAF/
 - ✅ Routes tasks based on keywords and agent capabilities
 - ✅ Supports external A2A-compliant agents
 
-### Travel Agent (AKS)
+### Travel Agent (AKS or ACA)
 - ✅ Built with **ChatAgent** from MAF
 - ✅ Uses **MCP tools** for currency and activity planning
 - ✅ Exposes **AgentCard** at `/.well-known/agent.json`
@@ -162,14 +162,14 @@ MultiAgent-AKS-MAF/
 - ✅ Deployed on Google Cloud Run
 - ✅ Integrated via A2A JSON-RPC 2.0 protocol
 
-### Streamlit Web UI (AKS)
+### Streamlit Web UI (AKS or ACA)
 - ✅ User-friendly interface for multi-agent interaction
 - ✅ Quick test buttons for common tasks
 - ✅ Contextual follow-up questions
 - ✅ Clean response formatting with expandable raw JSON
 - ✅ Support for all agent types (travel, burger, pizza)
 
-### MCP Servers
+### MCP Servers (AKS or ACA)
 - ✅ **Currency MCP**: Exchange rates via Frankfurter API
 - ✅ **Activity MCP**: Trip planning, recommendations
 
@@ -384,3 +384,4 @@ Contributions welcome! Please read CONTRIBUTING.md first.
 ---
 
 **Built with ❤️ using Microsoft Agent Framework + A2A Protocol**
+
