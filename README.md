@@ -27,7 +27,7 @@ A production-ready multi-agent orchestration system built with **Microsoft Agent
                     │              │   (JSON-RPC) │ (JSON-RPC)
          ┌──────────▼─────┐ ┌─────▼──────┐ ┌────▼─────┐ ┌────▼─────┐
          │ Travel Agent   │ │ Streamlit  │ │ Burger   │ │ Pizza    │
-         │ (AKS)          │ │ (AKS)      │ │ Agent    │ │ Agent    │
+         │ (AKS or ACA)   │ │(AKS or ACA)│ │ Agent    │ │ Agent    │
          │ LoadBalancer   │ │            │ │ (GCP)    │ │ (GCP)    │
          └────────┬───────┘ └────────────┘ └──────────┘ └──────────┘
                   │
@@ -37,7 +37,7 @@ A production-ready multi-agent orchestration system built with **Microsoft Agent
          │                 │
   ┌──────▼───────┐  ┌─────▼────────┐
   │ Currency MCP │  │ Activity MCP │
-  │ (AKS)        │  │ (AKS)        │
+  │ (AKS or ACA) │  │ (AKS or ACA) │
   │ Port 8001    │  │ Port 8002    │
   └──────────────┘  └──────────────┘
 ```
@@ -384,5 +384,6 @@ Contributions welcome! Please read CONTRIBUTING.md first.
 ---
 
 **Built with ❤️ using Microsoft Agent Framework + A2A Protocol**
+
 
 
