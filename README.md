@@ -3,7 +3,7 @@
 [![Deploy MCP Services to AKS](https://github.com/darkanita/MultiAgent-AKS-MAF/actions/workflows/deploy-mcp-to-aks.yml/badge.svg)](https://github.com/darkanita/MultiAgent-AKS-MAF/actions/workflows/deploy-mcp-to-aks.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A production-ready multi-agent orchestration system built with **Microsoft Agent Framework (MAF)**, **Agent-to-Agent (A2A) Protocol**, **Model Context Protocol (MCP)**, and **Azure Kubernetes Service (AKS)**.
+A production-ready multi-agent orchestration system built with **Microsoft Agent Framework (MAF)**, **Agent-to-Agent (A2A) Protocol**, **Model Context Protocol (MCP)**, and **Azure Kubernetes Service (AKS) or Azure Container Apps (ACA)**.
 
 ## 🏗️ Architecture
 
@@ -384,4 +384,5 @@ Contributions welcome! Please read CONTRIBUTING.md first.
 ---
 
 **Built with ❤️ using Microsoft Agent Framework + A2A Protocol**
+
 
