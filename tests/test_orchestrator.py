@@ -8,9 +8,21 @@ This script tests:
 """
 
 import asyncio
+import os
 import httpx
 
 ORCHESTRATOR_URL = "http://localhost:8000"
+API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
+TEST_USER_ID = os.getenv("TEST_USER_ID", "test_user")
+
+
+def auth_headers(include_user: bool = False):
+    headers = {}
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
+    if include_user:
+        headers["X-User-ID"] = TEST_USER_ID
+    return headers
 
 
 async def test_orchestrator():
@@ -32,7 +44,7 @@ async def test_orchestrator():
         
         # Test 2: List discovered agents
         print("\n✅ Test 2: List Discovered Agents")
-        response = await client.get(f"{ORCHESTRATOR_URL}/agents")
+        response = await client.get(f"{ORCHESTRATOR_URL}/agents", headers=auth_headers())
         agents = response.json()
         print(f"Total Agents: {agents['total_agents']}")
         for agent in agents['agents']:
@@ -48,8 +60,9 @@ async def test_orchestrator():
             f"{ORCHESTRATOR_URL}/task",
             json={
                 "task": "Convert 500 USD to EUR and JPY",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(include_user=True),
         )
         result = response.json()
         print(f"Agent Used: {result['agent_used']}")
@@ -61,8 +74,9 @@ async def test_orchestrator():
             f"{ORCHESTRATOR_URL}/task",
             json={
                 "task": "Recommend affordable restaurants in Tokyo",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(include_user=True),
         )
         result = response.json()
         print(f"Agent Used: {result['agent_used']}")
@@ -74,8 +88,9 @@ async def test_orchestrator():
             f"{ORCHESTRATOR_URL}/task",
             json={
                 "task": "Plan a 2-day trip to Paris with a budget of $800",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(include_user=True),
         )
         result = response.json()
         print(f"Agent Used: {result['agent_used']}")
@@ -92,7 +107,7 @@ async def test_orchestrator():
         
         # Test 7: Manual rediscovery
         print("\n✅ Test 7: Trigger Agent Rediscovery")
-        response = await client.post(f"{ORCHESTRATOR_URL}/discover")
+        response = await client.post(f"{ORCHESTRATOR_URL}/discover", headers=auth_headers())
         result = response.json()
         print(f"Status: {result['status']}")
         print(f"Agents Found: {result['agents_found']}")

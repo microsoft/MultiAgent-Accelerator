@@ -403,7 +403,7 @@ curl -X POST http://localhost:8000/task \
 
 ```bash
 # List all discovered agents
-curl http://ORCHESTRATOR_IP/agents
+curl -H "X-API-Key: $API_KEY" http://localhost:8000/agents
 
 # Should show both AKS and GCP agents
 ```

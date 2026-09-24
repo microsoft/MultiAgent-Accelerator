@@ -6,11 +6,21 @@ It requires the MCP servers and Travel Agent to be running.
 """
 
 import asyncio
+import os
 import httpx
 import json
 
 
 TRAVEL_AGENT_URL = "http://localhost:8080"
+API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
+TEST_USER_ID = os.getenv("TEST_USER_ID", "test_user")
+
+
+def auth_headers():
+    headers = {"X-User-ID": TEST_USER_ID}
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
+    return headers
 
 
 async def test_travel_agent():
@@ -44,8 +54,9 @@ async def test_travel_agent():
             f"{TRAVEL_AGENT_URL}/task",
             json={
                 "task": "How much is 500 USD in EUR and JPY?",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(),
         )
         print(f"Status Code: {response.status_code}")
         print(f"Response Content: {response.text[:500]}")
@@ -62,8 +73,9 @@ async def test_travel_agent():
             f"{TRAVEL_AGENT_URL}/task",
             json={
                 "task": "Recommend affordable restaurants in Tokyo",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(),
         )
         result = response.json()
         print(f"Result: {result['result'][:400]}...")
@@ -74,8 +86,9 @@ async def test_travel_agent():
             f"{TRAVEL_AGENT_URL}/task",
             json={
                 "task": "What are the top attractions in Paris?",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(),
         )
         result = response.json()
         print(f"Result: {result['result'][:400]}...")
@@ -86,8 +99,9 @@ async def test_travel_agent():
             f"{TRAVEL_AGENT_URL}/task",
             json={
                 "task": "Plan a 2-day trip to Rome with a budget of $800. Include restaurants, attractions, and convert the budget to EUR.",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(),
         )
         result = response.json()
         print(f"Result (first 600 chars): {result['result'][:600]}...")
@@ -99,8 +113,9 @@ async def test_travel_agent():
             f"{TRAVEL_AGENT_URL}/task",
             json={
                 "task": "Create a day trip plan for Paris starting at 9 AM with a budget of $150",
-                "user_id": "test_user"
-            }
+                "user_id": TEST_USER_ID
+            },
+            headers=auth_headers(),
         )
         result = response.json()
         print(f"Result: {result['result'][:500]}...")

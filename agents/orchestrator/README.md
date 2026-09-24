@@ -201,11 +201,13 @@ python main.py
 ### Test Agent Discovery
 
 ```bash
+export MULTIAGENT_API_KEY="<shared-api-key>"
+
 # Check discovered agents
-curl http://localhost:8000/agents
+curl -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/agents
 
 # Trigger re-discovery
-curl -X POST http://localhost:8000/discover
+curl -X POST -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/discover
 ```
 
 ### Test Request Routing
@@ -214,16 +216,22 @@ curl -X POST http://localhost:8000/discover
 # Currency task (should route to travel_agent)
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{"task": "Convert 500 USD to EUR"}'
 
 # Travel task (should route to travel_agent)
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{"task": "Plan a 2-day trip to Paris"}'
 
 # Restaurant task (should route to travel_agent)
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{"task": "Recommend restaurants in Tokyo"}'
 ```
 

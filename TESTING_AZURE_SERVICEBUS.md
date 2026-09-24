@@ -163,9 +163,13 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 ### Test 1: Send Task via Service Bus
 
 ```bash
+export MULTIAGENT_API_KEY="<shared-api-key>"
+
 # Test sending a task to Service Bus queue
 curl -X POST http://localhost:8000/task/async \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test-user-001" \
   -d '{
     "task": "What is the exchange rate from USD to EUR?",
     "user_id": "test-user-001"
@@ -264,6 +268,8 @@ If you just want to test A2A protocol without Service Bus:
 # Send task directly via HTTP
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test-user-001" \
   -d '{
     "task": "What is the exchange rate from USD to EUR?"
   }'

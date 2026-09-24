@@ -626,6 +626,9 @@ async def get_responses(
 
     if user_id != authenticated_user:
         raise HTTPException(status_code=403, detail="Cannot access responses for another user")
+
+    if max_messages < 1 or max_messages > 50:
+        raise HTTPException(status_code=400, detail="max_messages must be between 1 and 50")
     
     try:
         responses = []
@@ -634,8 +637,12 @@ async def get_responses(
             queue_name="agent-responses",
             max_wait_time=5
         ) as receiver:
-            # Receive messages (peek and delete)
-            async for message in receiver:
+            received_messages = await receiver.receive_messages(
+                max_message_count=max_messages,
+                max_wait_time=5,
+            )
+
+            for message in received_messages:
                 try:
                     # Get message body
                     body = str(message)

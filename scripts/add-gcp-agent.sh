@@ -71,9 +71,11 @@ echo "================================================"
 echo ""
 echo "Test the multi-cloud setup:"
 echo ""
-echo "  curl -X POST http://localhost:8000/task \\"
-echo "    -H 'Content-Type: application/json' \\"
-echo "    -H \"X-API-Key: \$API_KEY\" \\"
-echo "    -H 'X-User-ID: test-user' \\"
-echo "    -d '{\"task\": \"YOUR_TASK_HERE\"}'"
+cat <<'EOF'
+  curl -X POST http://localhost:8000/task \
+    -H 'Content-Type: application/json' \
+    -H "X-API-Key: $API_KEY" \
+    -H 'X-User-ID: test-user' \
+    -d '{"task": "YOUR_TASK_HERE"}'
+EOF
 echo ""

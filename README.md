@@ -265,22 +265,28 @@ curl -X POST http://localhost:8000/task \
   -d '{"task": "Convert 100 USD to EUR", "user_id": "test"}'
 
 # Travel Agent - Trip planning
-curl -X POST http://<ORCHESTRATOR_IP>/task \
+curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "Plan a 3-day trip to Paris", "user_id": "test"}'
 
 # Burger Agent (GCP)
-curl -X POST http://<ORCHESTRATOR_IP>/task \
+curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "I want 2 classic cheeseburgers", "user_id": "test"}'
 
 # Pizza Agent (GCP)
-curl -X POST http://<ORCHESTRATOR_IP>/task \
+curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "Order 1 pepperoni pizza", "user_id": "test"}'
 
 # Check discovered agents
-curl http://<ORCHESTRATOR_IP>/agents
+curl -H "X-API-Key: $API_KEY" http://localhost:8000/agents
 ```
 
 ### Test Locally
@@ -301,8 +307,11 @@ cd agents/travel_agent
 python main.py
 
 # Query the agent
+export MULTIAGENT_API_KEY="<shared-api-key>"
 curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: local-test" \
   -d '{"task": "Convert 500 USD to EUR", "user_id": "local-test"}'
 ```
 
@@ -315,7 +324,7 @@ export AGENT_ENDPOINTS="http://travel-agent-service,https://burger-agent-2868797
 python main.py
 
 # Check discovered agents
-curl http://localhost:8000/agents
+curl -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/agents
 ```
 
 ## 🔐 Security
@@ -389,4 +398,3 @@ Contributions welcome! Please read CONTRIBUTING.md first.
 ---
 
 **Built with ❤️ using Microsoft Agent Framework + A2A Protocol**
-
