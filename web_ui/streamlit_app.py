@@ -448,8 +448,8 @@ elif page == "🔍 Async Responses":
        bash scripts/view-async-responses.sh
        ```
     
-    2. The `/responses` endpoint returns responses for the authenticated `X-User-ID`
-       to fetch responses directly from the Service Bus queue
+    2. The `/responses` endpoint returns responses for the principal identified by the
+       API key, fetched directly from the Service Bus queue
     """)
     
     with st.expander("📋 Sample Response Format"):

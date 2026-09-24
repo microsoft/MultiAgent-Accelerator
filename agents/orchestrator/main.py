@@ -17,12 +17,14 @@ Architecture:
 
 import os
 import json
+import hashlib
 import logging
 import asyncio
 import secrets
 from typing import Optional, Dict, List, Any
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -74,6 +76,17 @@ def _load_user_api_keys() -> Dict[str, str]:
 
 USER_API_KEYS = _load_user_api_keys()
 
+# Credential used when calling externally hosted agents (e.g. GCP Cloud Run), so the
+# internal shared key is never sent to endpoints outside the cluster.
+EXTERNAL_AGENT_API_KEY = os.getenv("EXTERNAL_AGENT_API_KEY") or os.getenv("GCP_AGENT_API_KEY")
+
+# Extra agent base URL prefixes that are trusted with the internal MULTIAGENT_API_KEY
+TRUSTED_AGENT_URL_PREFIXES = [
+    prefix.strip()
+    for prefix in os.getenv("TRUSTED_AGENT_URL_PREFIXES", "").split(",")
+    if prefix.strip()
+]
+
 # Agent discovery endpoints (can be configured via environment)
 AGENT_ENDPOINTS = os.getenv(
     "AGENT_ENDPOINTS",
@@ -107,28 +120,34 @@ def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) 
     raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
+def _principal_for_shared_key(api_key: str) -> str:
+    """Derive a stable identity for callers authenticated with the shared API key."""
+    return f"client-{hashlib.sha256(api_key.encode('utf-8')).hexdigest()[:16]}"
+
+
 def require_authenticated_user(
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
     _: None = Depends(require_api_key),
 ) -> str:
     """Require a caller identity for APIs that access user-scoped data.
 
-    When per-user API keys are configured (USER_API_KEYS), the caller's identity is
-    derived from the authenticated credential itself rather than trusted from the
-    client-supplied X-User-ID header, preventing a caller from impersonating another
-    user's session simply by guessing/choosing a different user ID.
+    The identity is always derived from the authenticated credential, never from the
+    client-supplied X-User-ID header, so a caller cannot read or write another
+    user's Service Bus session simply by choosing a different user ID. Configure
+    USER_API_KEYS to give each user its own credential and therefore its own
+    isolated session; callers sharing MULTIAGENT_API_KEY share a single identity.
     """
-    if USER_API_KEYS:
-        for candidate_key, candidate_user in USER_API_KEYS.items():
-            if x_api_key and secrets.compare_digest(x_api_key, candidate_key):
-                return candidate_user
-        raise HTTPException(status_code=401, detail="API key is not associated with a user")
+    if not AUTH_ENABLED:
+        return "anonymous"
 
-    user_id = (x_user_id or "").strip()
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Missing X-User-ID header")
-    return user_id
+    for candidate_key, candidate_user in USER_API_KEYS.items():
+        if x_api_key and secrets.compare_digest(x_api_key, candidate_key):
+            return candidate_user
+
+    if x_api_key and MULTIAGENT_API_KEY and secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
+        return _principal_for_shared_key(MULTIAGENT_API_KEY)
+
+    raise HTTPException(status_code=401, detail="API key is not associated with a user")
 
 
 async def process_queue_messages():
@@ -370,6 +389,26 @@ def select_best_agent(task: str, preferred_agent: Optional[str] = None) -> Optio
     return None
 
 
+def _is_trusted_internal_agent(base_url: str) -> bool:
+    """Check whether an agent endpoint is an internal (in-cluster) endpoint.
+
+    Only internal endpoints receive the shared MULTIAGENT_API_KEY; externally hosted
+    agents are called with their own credential instead.
+    """
+    if any(base_url.startswith(prefix) for prefix in TRUSTED_AGENT_URL_PREFIXES):
+        return True
+
+    hostname = (urlparse(base_url).hostname or "").lower()
+    if not hostname:
+        return False
+
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return True
+
+    # Kubernetes service addresses are single-label or *.svc[.cluster.local]
+    return "." not in hostname or hostname.endswith(".svc") or ".svc." in hostname
+
+
 async def call_agent(agent_name: str, task: str, user_id: str) -> str:
     """
     Call a specific agent to execute a task
@@ -406,8 +445,11 @@ async def call_agent(agent_name: str, task: str, user_id: str) -> str:
     
     try:
         headers = {"X-User-ID": user_id}
-        if MULTIAGENT_API_KEY:
-            headers["X-API-Key"] = MULTIAGENT_API_KEY
+        if _is_trusted_internal_agent(agent_base_url):
+            if MULTIAGENT_API_KEY:
+                headers["X-API-Key"] = MULTIAGENT_API_KEY
+        elif EXTERNAL_AGENT_API_KEY:
+            headers["X-API-Key"] = EXTERNAL_AGENT_API_KEY
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(

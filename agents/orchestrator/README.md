@@ -147,6 +147,15 @@ Health check endpoint
 | `AGENT_ENDPOINTS` | Comma-separated list of agent card URLs | See below | Yes |
 | `SERVICEBUS_NAMESPACE` | Azure Service Bus namespace | - | No |
 | `USE_MANAGED_IDENTITY` | Use managed identity (true/false) | `true` | No |
+| `AUTH_ENABLED` | Require an API key on non-public endpoints | `true` | No |
+| `MULTIAGENT_API_KEY` | Shared API key for internal callers and internal agents | - | Yes (when auth enabled) |
+| `USER_API_KEYS` | JSON object mapping per-user API keys to user IDs (e.g. `{"alice-key": "alice"}`) used to derive the caller identity that scopes Service Bus sessions | - | No |
+| `EXTERNAL_AGENT_API_KEY` | API key sent to externally hosted agents (also read from `GCP_AGENT_API_KEY`) | - | No |
+| `TRUSTED_AGENT_URL_PREFIXES` | Extra agent base URL prefixes trusted with `MULTIAGENT_API_KEY` | - | No |
+
+> **Note**: user-scoped data (async responses) is isolated by the identity derived from
+> the presented API key, not by the `X-User-ID` header. Configure `USER_API_KEYS` to give
+> each user its own isolated identity.
 
 **Default Agent Endpoints**:
 ```
@@ -235,11 +244,11 @@ curl -X POST http://localhost:8000/task \
   -d '{"task": "Recommend restaurants in Tokyo"}'
 ```
 
-> **Note:** With a single shared `MULTIAGENT_API_KEY`, the `X-User-ID` header is only
-> a caller-supplied claim, so any holder of the shared key can access another user's
-> Service Bus session. For real deployments, configure `USER_API_KEYS` (a JSON object
-> mapping each per-user API key to its user ID, e.g. `{"alice-key": "alice"}`) so the
-> user identity is derived from the authenticated credential instead of the header.
+> **Note:** The `X-User-ID` header is never trusted for isolation: async responses are
+> scoped to the identity of the presented API key. All callers sharing
+> `MULTIAGENT_API_KEY` therefore share a single identity. For real deployments configure
+> `USER_API_KEYS` (a JSON object mapping each per-user API key to its user ID, e.g.
+> `{"alice-key": "alice"}`) so every user gets its own isolated session.
 
 ## 🐳 Docker
 

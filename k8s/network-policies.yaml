@@ -136,6 +136,27 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-response-viewer-egress
+  namespace: multiagent
+spec:
+  podSelector:
+    matchLabels:
+      app: response-viewer
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 5671
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-streamlit-ui-ingress
   namespace: multiagent
 spec:

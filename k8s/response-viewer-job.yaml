@@ -7,6 +7,7 @@ spec:
   template:
     metadata:
       labels:
+        app: response-viewer
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: multiagent-sa
