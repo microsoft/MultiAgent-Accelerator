@@ -8,6 +8,16 @@ import ast
 
 # Configuration - use environment variable or default
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://4.150.144.45")
+MULTIAGENT_API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
+
+
+def build_headers(user_id=None):
+    headers = {}
+    if MULTIAGENT_API_KEY:
+        headers["X-API-Key"] = MULTIAGENT_API_KEY
+    if user_id:
+        headers["X-User-ID"] = user_id
+    return headers
 
 def parse_agent_response(result_str, agent_name):
     """
@@ -141,7 +151,11 @@ if page == "🏠 Dashboard":
             st.rerun()
     
     try:
-        response = requests.get(f"{orchestrator_url}/agents", timeout=5)
+        response = requests.get(
+            f"{orchestrator_url}/agents",
+            headers=build_headers(),
+            timeout=5,
+        )
         if response.status_code == 200:
             agents_data = response.json()
             total_agents = agents_data.get("total_agents", 0)
@@ -282,6 +296,7 @@ elif page == "📝 Submit Task":
                 response = requests.post(
                     f"{orchestrator_url}{endpoint}",
                     json=payload,
+                    headers=build_headers(user_id),
                     timeout=30
                 )
                 
@@ -390,6 +405,7 @@ elif page == "🔍 Async Responses":
                 response = requests.get(
                     f"{orchestrator_url}/responses/{user_filter}",
                     params={"max_messages": max_msgs},
+                    headers=build_headers(user_filter),
                     timeout=10
                 )
                 

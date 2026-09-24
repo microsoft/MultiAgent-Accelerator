@@ -137,8 +137,15 @@ jobs:
           cat k8s/namespace-and-sa.yaml | \
             sed "s/REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID/${{ steps.workload-identity.outputs.client-id }}/g" | \
             kubectl apply -f -
+
+          if ! kubectl get secret multiagent-api-auth -n $NAMESPACE >/dev/null 2>&1; then
+            API_KEY=$(openssl rand -base64 32)
+            kubectl create secret generic multiagent-api-auth \
+              -n $NAMESPACE \
+              --from-literal=api-key="$API_KEY"
+          fi
           
-          echo "✅ Namespace and service account created"
+          echo "✅ Namespace, service account, and auth secret created"
       
       - name: Deploy Currency MCP
         run: |
@@ -166,6 +173,11 @@ jobs:
             kubectl apply -f -
           
           echo "✅ Travel Agent deployed"
+
+      - name: Apply network policies
+        run: |
+          kubectl apply -f k8s/network-policies.yaml
+          echo "✅ Network policies applied"
       
       - name: Wait for deployments to be ready
         run: |
@@ -186,53 +198,12 @@ jobs:
           echo "🔍 Pod Status:"
           kubectl get pods -n $NAMESPACE
       
-      - name: Get Travel Agent external IP
-        id: get-ip
+      - name: Test internal service health
         run: |
-          echo "⏳ Waiting for external IP..."
-          
-          for i in {1..30}; do
-            EXTERNAL_IP=$(kubectl get service travel-agent-service -n $NAMESPACE \
-              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-            
-            if [ -n "$EXTERNAL_IP" ]; then
-              echo "external-ip=$EXTERNAL_IP" >> $GITHUB_OUTPUT
-              echo "✅ Travel Agent is accessible at: http://$EXTERNAL_IP"
-              break
-            fi
-            
-            echo "  Attempt $i/30: Still waiting..."
-            sleep 10
-          done
-          
-          if [ -z "$EXTERNAL_IP" ]; then
-            echo "⚠️ External IP not assigned yet. Check later with:"
-            echo "  kubectl get service travel-agent-service -n $NAMESPACE"
-          fi
-      
-      - name: Test deployment
-        if: steps.get-ip.outputs.external-ip != ''
-        run: |
-          EXTERNAL_IP=${{ steps.get-ip.outputs.external-ip }}
-          
           echo "🧪 Testing deployment..."
-          
-          # Test health endpoint
-          curl -f -s http://$EXTERNAL_IP/health || echo "Health check failed"
-          
-          # Test currency exchange
-          RESPONSE=$(curl -s -X POST http://$EXTERNAL_IP/task \
-            -H "Content-Type: application/json" \
-            -d '{"task": "What is the exchange rate from USD to EUR?"}')
-          
-          echo "Response: $RESPONSE"
-          
-          if echo "$RESPONSE" | grep -q "EUR"; then
-            echo "✅ Deployment test passed!"
-          else
-            echo "❌ Deployment test failed"
-            exit 1
-          fi
+          kubectl get service travel-agent-service -n $NAMESPACE
+          kubectl get pods -n $NAMESPACE -l app=travel-agent
+          echo "✅ Internal services deployed; use authenticated ingress or port-forward for access"
       
       - name: Deployment summary
         run: |

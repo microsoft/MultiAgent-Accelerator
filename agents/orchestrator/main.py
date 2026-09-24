@@ -18,12 +18,13 @@ Architecture:
 import os
 import logging
 import asyncio
+import secrets
 from typing import Optional, Dict, List, Any
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
@@ -47,6 +48,8 @@ logger = logging.getLogger(__name__)
 SERVICEBUS_NAMESPACE = os.getenv("SERVICEBUS_NAMESPACE", "")
 USE_MANAGED_IDENTITY = os.getenv("USE_MANAGED_IDENTITY", "true").lower() == "true"
 ORCHESTRATOR_PORT = int(os.getenv("PORT", "8000"))
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() not in ("false", "0", "no")
+MULTIAGENT_API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
 
 # Agent discovery endpoints (can be configured via environment)
 AGENT_ENDPOINTS = os.getenv(
@@ -58,6 +61,32 @@ AGENT_ENDPOINTS = os.getenv(
 discovered_agents: Dict[str, Dict[str, Any]] = {}
 service_bus_client: Optional[ServiceBusClient] = None
 queue_processor_task: Optional[asyncio.Task] = None
+
+
+def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
+    """Require API key authentication for non-public API endpoints."""
+    if not AUTH_ENABLED:
+        return
+
+    if not MULTIAGENT_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="API authentication is enabled but MULTIAGENT_API_KEY is not configured",
+        )
+
+    if not x_api_key or not secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def require_authenticated_user(
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+    _: None = Depends(require_api_key),
+) -> str:
+    """Require a caller identity for APIs that access user-scoped data."""
+    user_id = (x_user_id or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Missing X-User-ID header")
+    return user_id
 
 
 async def process_queue_messages():
@@ -333,10 +362,15 @@ async def call_agent(agent_name: str, task: str, user_id: str) -> str:
     logger.info(f"📞 Calling {agent_name} at {task_url}")
     
     try:
+        headers = {"X-User-ID": user_id}
+        if MULTIAGENT_API_KEY:
+            headers["X-API-Key"] = MULTIAGENT_API_KEY
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 task_url,
-                json={"task": task, "user_id": user_id}
+                json={"task": task, "user_id": user_id},
+                headers=headers,
             )
             response.raise_for_status()
             result = response.json()
@@ -437,7 +471,7 @@ async def health():
 
 
 @app.get("/agents")
-async def list_agents():
+async def list_agents(_: None = Depends(require_api_key)):
     """List all discovered agents and their capabilities"""
     agents_info = []
     
@@ -461,7 +495,10 @@ async def list_agents():
 
 
 @app.post("/task", response_model=TaskResponse)
-async def execute_task(request: TaskRequest):
+async def execute_task(
+    request: TaskRequest,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Execute a task by routing it to the appropriate agent
     
@@ -471,6 +508,7 @@ async def execute_task(request: TaskRequest):
     3. Routes the request to that agent
     4. Returns the result
     """
+    request.user_id = authenticated_user
     logger.info(f"📝 New task from {request.user_id}: {request.task}")
     
     if not discovered_agents:
@@ -506,7 +544,10 @@ async def execute_task(request: TaskRequest):
 
 
 @app.post("/task/async")
-async def execute_task_async(request: TaskRequest):
+async def execute_task_async(
+    request: TaskRequest,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Queue a task for async processing via Service Bus
     
@@ -521,6 +562,7 @@ async def execute_task_async(request: TaskRequest):
             detail="Service Bus not available. Use /task for synchronous execution."
         )
     
+    request.user_id = authenticated_user
     logger.info(f"📬 Queueing task from {request.user_id}: {request.task}")
     
     try:
@@ -551,7 +593,7 @@ async def execute_task_async(request: TaskRequest):
 
 
 @app.post("/discover")
-async def trigger_discovery():
+async def trigger_discovery(_: None = Depends(require_api_key)):
     """Manually trigger agent discovery"""
     await discover_all_agents()
     return {
@@ -562,7 +604,11 @@ async def trigger_discovery():
 
 
 @app.get("/responses/{user_id}")
-async def get_responses(user_id: str, max_messages: int = 10):
+async def get_responses(
+    user_id: str,
+    max_messages: int = 10,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Fetch async responses for a specific user from Service Bus queue
     
@@ -577,6 +623,9 @@ async def get_responses(user_id: str, max_messages: int = 10):
             status_code=503,
             detail="Service Bus not available"
         )
+
+    if user_id != authenticated_user:
+        raise HTTPException(status_code=403, detail="Cannot access responses for another user")
     
     try:
         responses = []
@@ -595,8 +644,8 @@ async def get_responses(user_id: str, max_messages: int = 10):
                     props = message.application_properties or {}
                     msg_user_id = props.get("user_id", "unknown")
                     
-                    # Filter by user_id if it matches or include all if no filter
-                    if user_id == "all" or msg_user_id == user_id:
+                    # Only return and remove messages belonging to the authenticated user.
+                    if msg_user_id == authenticated_user:
                         responses.append({
                             "user_id": msg_user_id,
                             "response": body,
@@ -604,9 +653,9 @@ async def get_responses(user_id: str, max_messages: int = 10):
                             "timestamp": str(message.enqueued_time_utc) if message.enqueued_time_utc else "N/A",
                             "message_id": message.message_id
                         })
-                    
-                    # Complete the message (remove from queue)
-                    await receiver.complete_message(message)
+                        await receiver.complete_message(message)
+                    else:
+                        await receiver.abandon_message(message)
                     
                     if len(responses) >= max_messages:
                         break

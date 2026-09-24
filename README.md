@@ -10,14 +10,15 @@ A production-ready multi-agent orchestration system built with **Microsoft Agent
 ```
                         ┌─────────────────────┐
                         │   Streamlit UI      │
-                        │   (LoadBalancer)    │
+                        │   (authenticated    │
+                        │    ingress/port-fwd)│
                         └──────────┬──────────┘
                                    │
                                    │ HTTP
                                    │
                         ┌──────────▼──────────┐
                         │   Orchestrator      │
-                        │   (LoadBalancer)    │
+                        │   (ClusterIP)       │
                         │   AKS (2 replicas)  │
                         └──────────┬──────────┘
                                    │
@@ -28,7 +29,7 @@ A production-ready multi-agent orchestration system built with **Microsoft Agent
          ┌──────────▼─────┐ ┌─────▼──────┐ ┌────▼─────┐ ┌────▼─────┐
          │ Travel Agent   │ │ Streamlit  │ │ Burger   │ │ Pizza    │
          │ (AKS or ACA)   │ │(AKS or ACA)│ │ Agent    │ │ Agent    │
-         │ LoadBalancer   │ │            │ │ (GCP)    │ │ (GCP)    │
+         │ ClusterIP      │ │            │ │ (GCP)    │ │ (GCP)    │
          └────────┬───────┘ └────────────┘ └──────────┘ └──────────┘
                   │
           MCP StreamableHTTP
@@ -232,7 +233,7 @@ This will:
 - Push to Azure Container Registry
 - Deploy to AKS with Workload Identity
 - Configure session affinity for MCP servers
-- Wait for pods and get external IP
+- Wait for pods and configure internal services with API-key authentication
 
 ## 🧪 Testing
 
@@ -240,7 +241,8 @@ This will:
 
 **Via Streamlit UI** (Recommended):
 ```
-Open browser: http://<STREAMLIT_UI_IP>
+kubectl port-forward -n multiagent svc/streamlit-ui-service 8501:80
+Open browser: http://localhost:8501
 
 Quick Test Buttons:
 - 🍔 Order Burgers → Routes to Burger Agent (GCP)
@@ -251,12 +253,15 @@ Quick Test Buttons:
 
 ### Test Orchestrator Directly
 
-Get the orchestrator IP: `kubectl get svc orchestrator-service -n multiagent`
-
 ```bash
+kubectl port-forward -n multiagent svc/orchestrator-service 8000:80
+API_KEY=$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)
+
 # Travel Agent - Currency conversion
-curl -X POST http://<ORCHESTRATOR_IP>/task \
+curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "Convert 100 USD to EUR", "user_id": "test"}'
 
 # Travel Agent - Trip planning
@@ -359,9 +364,9 @@ kubectl get svc -n multiagent
 ```
 
 Services:
-- **Streamlit UI**: `streamlit-service` (LoadBalancer)
-- **Orchestrator**: `orchestrator-service` (LoadBalancer)
-- **Travel Agent**: `travel-agent-service` (LoadBalancer)
+- **Streamlit UI**: `streamlit-ui-service` (ClusterIP; expose only through authenticated ingress or port-forward)
+- **Orchestrator**: `orchestrator-service` (ClusterIP)
+- **Travel Agent**: `travel-agent-service` (ClusterIP)
 - **Burger Agent (GCP)**: External Cloud Run service
 - **Pizza Agent (GCP)**: External Cloud Run service
 
@@ -384,6 +389,4 @@ Contributions welcome! Please read CONTRIBUTING.md first.
 ---
 
 **Built with ❤️ using Microsoft Agent Framework + A2A Protocol**
-
-
 

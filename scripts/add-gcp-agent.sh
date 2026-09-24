@@ -59,13 +59,10 @@ echo ""
 echo "✅ Orchestrator updated successfully!"
 echo ""
 
-# Get orchestrator external IP
-ORCHESTRATOR_IP=$(kubectl get svc orchestrator-service -n multiagent -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-echo "🧪 Testing agent discovery via orchestrator..."
-sleep 5  # Give it a moment to discover
-
-curl -s "http://$ORCHESTRATOR_IP/agents" | jq .
+echo "🧪 To test agent discovery via orchestrator, use a local port-forward:"
+echo "   kubectl port-forward -n multiagent svc/orchestrator-service 8000:80"
+echo "   API_KEY=\$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)"
+echo "   curl -s -H \"X-API-Key: \$API_KEY\" http://localhost:8000/agents | jq ."
 
 echo ""
 echo "================================================"
@@ -74,7 +71,9 @@ echo "================================================"
 echo ""
 echo "Test the multi-cloud setup:"
 echo ""
-echo "  curl -X POST http://$ORCHESTRATOR_IP/task \\"
+echo "  curl -X POST http://localhost:8000/task \\"
 echo "    -H 'Content-Type: application/json' \\"
+echo "    -H \"X-API-Key: \$API_KEY\" \\"
+echo "    -H 'X-User-ID: test-user' \\"
 echo "    -d '{\"task\": \"YOUR_TASK_HERE\"}'"
 echo ""

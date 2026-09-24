@@ -64,6 +64,16 @@ cat k8s/namespace-and-sa.yaml | \
     sed "s/REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID/$WORKLOAD_IDENTITY_CLIENT_ID/g" | \
     kubectl apply -f -
 
+if ! kubectl get secret multiagent-api-auth -n multiagent >/dev/null 2>&1; then
+    echo "🔐 Creating shared API authentication secret..."
+    API_KEY=$(openssl rand -base64 32)
+    kubectl create secret generic multiagent-api-auth \
+        -n multiagent \
+        --from-literal=api-key="$API_KEY"
+else
+    echo "🔐 Reusing existing shared API authentication secret"
+fi
+
 # Step 6: Deploy services with environment substitution
 echo ""
 echo "🚢 Deploying services to AKS..."
@@ -87,6 +97,9 @@ deploy_manifest k8s/activity-mcp-deployment.yaml
 # Deploy Travel Agent
 deploy_manifest k8s/travel-agent-deployment.yaml
 
+# Apply network policies
+kubectl apply -f k8s/network-policies.yaml
+
 echo ""
 echo "✅ Deployment complete!"
 
@@ -104,32 +117,17 @@ kubectl get pods -n multiagent
 echo ""
 kubectl get services -n multiagent
 
-# Step 9: Get Travel Agent external IP
+# Step 9: Show secure access instructions
 echo ""
-echo "🌐 Getting Travel Agent external IP (this may take a few minutes)..."
-EXTERNAL_IP=""
-for i in {1..30}; do
-    EXTERNAL_IP=$(kubectl get service travel-agent-service -n multiagent -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    if [ -n "$EXTERNAL_IP" ]; then
-        break
-    fi
-    echo "   Waiting for external IP... ($i/30)"
-    sleep 10
-done
-
-if [ -n "$EXTERNAL_IP" ]; then
-    echo ""
-    echo "✅ Travel Agent is accessible at: http://$EXTERNAL_IP"
-    echo ""
-    echo "Test with:"
-    echo "  curl -X POST http://$EXTERNAL_IP/task \\"
-    echo "    -H 'Content-Type: application/json' \\"
-    echo "    -d '{\"task\": \"What is the exchange rate from USD to EUR?\"}'"
-else
-    echo ""
-    echo "⚠️  External IP not yet assigned. Check later with:"
-    echo "   kubectl get service travel-agent-service -n multiagent"
-fi
+echo "🔒 Services are internal ClusterIP services."
+echo "Test with:"
+echo "  kubectl port-forward -n multiagent svc/travel-agent-service 8080:80"
+echo "  API_KEY=\$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)"
+echo "  curl -X POST http://localhost:8080/task \\"
+echo "    -H 'Content-Type: application/json' \\"
+echo "    -H \"X-API-Key: \$API_KEY\" \\"
+echo "    -H 'X-User-ID: test-user' \\"
+echo "    -d '{\"task\": \"What is the exchange rate from USD to EUR?\"}'"
 
 echo ""
 echo "🎉 Deployment script completed!"

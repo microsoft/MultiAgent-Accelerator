@@ -26,6 +26,14 @@ echo ""
 
 # Deploy orchestrator
 echo "📦 Deploying orchestrator..."
+if ! kubectl get secret multiagent-api-auth -n multiagent >/dev/null 2>&1; then
+  echo "🔐 Creating shared API authentication secret..."
+  API_KEY=$(openssl rand -base64 32)
+  kubectl create secret generic multiagent-api-auth \
+    -n multiagent \
+    --from-literal=api-key="$API_KEY"
+fi
+
 cat k8s/orchestrator-deployment.yaml | \
   sed "s/\${ACR_NAME}/$ACR_NAME/g" | \
   sed "s/\${SERVICEBUS_NAMESPACE}/$SERVICEBUS_NAMESPACE/g" | \
@@ -39,8 +47,8 @@ echo ""
 echo "📊 Checking status..."
 kubectl get pods -n multiagent -l app=orchestrator
 echo ""
-echo "🔍 Get external IP (may take a few minutes):"
-echo "   kubectl get svc orchestrator-service -n multiagent"
+echo "🔒 Orchestrator is internal. For development access:"
+echo "   kubectl port-forward -n multiagent svc/orchestrator-service 8000:80"
 echo ""
 echo "📝 View logs:"
 echo "   kubectl logs -n multiagent -l app=orchestrator --tail=50 -f"

@@ -104,6 +104,14 @@ echo ""
 # Apply Kubernetes manifests
 echo "☸️  Deploying to Kubernetes..."
 
+if ! kubectl get secret multiagent-api-auth -n multiagent >/dev/null 2>&1; then
+    echo "🔐 Creating shared API authentication secret..."
+    API_KEY=$(openssl rand -base64 32)
+    kubectl create secret generic multiagent-api-auth \
+        -n multiagent \
+        --from-literal=api-key="$API_KEY"
+fi
+
 # Substitute variables in the deployment file
 cat k8s/orchestrator-deployment.yaml | \
     sed "s/\${ACR_NAME}/$ACR_NAME/g" | \
@@ -128,13 +136,18 @@ echo "🧪 Test the orchestrator:"
 echo "   kubectl port-forward -n multiagent svc/orchestrator-service 8000:8000"
 echo ""
 echo "   Then in another terminal:"
+echo "   API_KEY=\$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)"
 echo "   curl -X POST http://localhost:8000/task \\"
 echo "     -H 'Content-Type: application/json' \\"
+echo "     -H \"X-API-Key: \$API_KEY\" \\"
+echo "     -H 'X-User-ID: test-user' \\"
 echo "     -d '{\"task\": \"What is 100 USD in EUR?\"}'"
 echo ""
 echo "📬 Test Service Bus integration:"
 echo "   curl -X POST http://localhost:8000/task/async \\"
 echo "     -H 'Content-Type: application/json' \\"
+echo "     -H \"X-API-Key: \$API_KEY\" \\"
+echo "     -H 'X-User-ID: test-user' \\"
 echo "     -d '{\"task\": \"Find restaurants in Paris\"}'"
 echo ""
 echo "=============================================="

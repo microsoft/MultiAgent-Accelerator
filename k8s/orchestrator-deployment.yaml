@@ -42,6 +42,13 @@ spec:
           value: "${AZURE_TENANT_ID}"
         - name: AZURE_FEDERATED_TOKEN_FILE
           value: "/var/run/secrets/azure/tokens/azure-identity-token"
+        - name: AUTH_ENABLED
+          value: "true"
+        - name: MULTIAGENT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: multiagent-api-auth
+              key: api-key
         resources:
           requests:
             memory: "256Mi"
@@ -86,7 +93,7 @@ metadata:
   labels:
     app: orchestrator
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
   - port: 80
     targetPort: 8000

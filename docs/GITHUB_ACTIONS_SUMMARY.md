@@ -94,9 +94,8 @@ The workflow runs when:
 ┌─────────────────────────────────────────────────────────────┐
 │ 6. Verification Phase                                       │
 │    - Wait for pods to be ready (5 min timeout)              │
-│    - Get external IP                                        │
-│    - Test health endpoint                                   │
-│    - Test currency exchange functionality                   │
+│    - Confirm internal services and pod status               │
+│    - Require authenticated ingress or port-forward access   │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
@@ -165,7 +164,7 @@ namespace/multiagent
 └── Services:
     ├── currency-mcp-service (ClusterIP + Session Affinity)
     ├── activity-mcp-service (ClusterIP + Session Affinity)
-    └── travel-agent-service (LoadBalancer)
+    └── travel-agent-service (ClusterIP)
 ```
 
 ## 🧪 Testing After Deployment
