@@ -69,13 +69,33 @@ echo "📬 Setting up Service Bus queues..."
 for QUEUE in "agent-tasks" "agent-responses"; do
     if az servicebus queue show --namespace-name "$SERVICEBUS_NAME" --resource-group "$RG_NAME" --name "$QUEUE" &> /dev/null; then
         echo "   ✅ Queue '$QUEUE' already exists"
+        if [ "$QUEUE" = "agent-responses" ]; then
+            REQUIRES_SESSION=$(az servicebus queue show \
+                --namespace-name "$SERVICEBUS_NAME" \
+                --resource-group "$RG_NAME" \
+                --name "$QUEUE" \
+                --query requiresSession -o tsv)
+            if [ "$REQUIRES_SESSION" != "true" ]; then
+                echo "   ⚠️  Queue 'agent-responses' must have sessions enabled for user-isolated responses."
+                echo "      Recreate this queue with --requires-session true before using async responses."
+            fi
+        fi
     else
         echo "   Creating queue '$QUEUE'..."
-        az servicebus queue create \
-            --namespace-name "$SERVICEBUS_NAME" \
-            --resource-group "$RG_NAME" \
-            --name "$QUEUE" \
-            --output none
+        if [ "$QUEUE" = "agent-responses" ]; then
+            az servicebus queue create \
+                --namespace-name "$SERVICEBUS_NAME" \
+                --resource-group "$RG_NAME" \
+                --name "$QUEUE" \
+                --requires-session true \
+                --output none
+        else
+            az servicebus queue create \
+                --namespace-name "$SERVICEBUS_NAME" \
+                --resource-group "$RG_NAME" \
+                --name "$QUEUE" \
+                --output none
+        fi
         echo "   ✅ Queue '$QUEUE' created"
     fi
 done

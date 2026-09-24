@@ -49,9 +49,9 @@ async def send_task_to_queue(task: str, user_id: str = "test-user"):
             return message.message_id
 
 
-async def receive_response_from_queue(timeout: int = 30):
+async def receive_response_from_queue(timeout: int = 30, user_id: str = "test-user"):
     """Receive response from Service Bus response queue"""
-    print(f"\n📥 Waiting for response (timeout: {timeout}s)...")
+    print(f"\n📥 Waiting for response for {user_id} (timeout: {timeout}s)...")
     
     credential = AzureCliCredential()
     
@@ -61,6 +61,7 @@ async def receive_response_from_queue(timeout: int = 30):
     ) as client:
         async with client.get_queue_receiver(
             queue_name="agent-responses",
+            session_id=user_id,
             max_wait_time=timeout
         ) as receiver:
             received_msgs = await receiver.receive_messages(max_message_count=1, max_wait_time=timeout)
@@ -108,7 +109,7 @@ async def test_end_to_end():
     print("\n⏳ Waiting for orchestrator to process...")
     await asyncio.sleep(5)  # Give orchestrator time to process
     
-    await receive_response_from_queue(timeout=10)
+    await receive_response_from_queue(timeout=10, user_id="test-user-001")
     
     # Test 2: Travel planning
     print("\n" + "=" * 80)
@@ -123,7 +124,7 @@ async def test_end_to_end():
     print("\n⏳ Waiting for orchestrator to process...")
     await asyncio.sleep(5)
     
-    await receive_response_from_queue(timeout=10)
+    await receive_response_from_queue(timeout=10, user_id="test-user-002")
     
     print("\n" + "=" * 80)
     print("✅ All tests complete!")
@@ -186,7 +187,7 @@ async def main():
         await send_task_to_queue(args.task, args.user)
     
     elif args.action == "receive":
-        await receive_response_from_queue(args.timeout)
+        await receive_response_from_queue(args.timeout, args.user)
     
     elif args.action == "test":
         await test_end_to_end()

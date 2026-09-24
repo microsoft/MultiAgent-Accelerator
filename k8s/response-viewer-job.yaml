@@ -24,10 +24,12 @@ spec:
             import asyncio
             from azure.identity.aio import DefaultAzureCredential
             from azure.servicebus.aio import ServiceBusClient
-
+            import os
+ 
             async def main():
                 print("📥 Connecting to Service Bus...")
                 credential = DefaultAzureCredential()
+                user_id = os.getenv("USER_ID", "test-user")
                 
                 async with ServiceBusClient(
                     fully_qualified_namespace="${SERVICEBUS_NAMESPACE}",
@@ -35,6 +37,7 @@ spec:
                 ) as client:
                     async with client.get_queue_receiver(
                         queue_name="agent-responses",
+                        session_id=user_id,
                         max_wait_time=30
                     ) as receiver:
                         
@@ -83,5 +86,7 @@ spec:
           value: "${WORKLOAD_IDENTITY_CLIENT_ID}"
         - name: AZURE_TENANT_ID
           value: "${AZURE_TENANT_ID}"
+        - name: USER_ID
+          value: "test-user"
       restartPolicy: Never
   backoffLimit: 1

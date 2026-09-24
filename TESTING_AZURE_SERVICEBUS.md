@@ -76,6 +76,8 @@ agent-responses
 
 ✅ If you see both queues, you're good to go!
 
+The `agent-responses` queue must have Service Bus sessions enabled. Responses use the authenticated user ID as the session ID so users cannot consume or delete other users' responses.
+
 ## Step 4: Configure Orchestrator for Local Testing
 
 Create `.env` file in `agents/orchestrator/`:

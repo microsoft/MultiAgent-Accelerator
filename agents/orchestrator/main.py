@@ -124,6 +124,7 @@ async def process_queue_messages():
                                 async with service_bus_client.get_queue_sender(queue_name="agent-responses") as sender:
                                     response_msg = ServiceBusMessage(
                                         body=result,
+                                        session_id=user_id,
                                         application_properties={
                                             "user_id": user_id,
                                             "agent_used": selected_agent,
@@ -635,6 +636,7 @@ async def get_responses(
         
         async with service_bus_client.get_queue_receiver(
             queue_name="agent-responses",
+            session_id=authenticated_user,
             max_wait_time=5
         ) as receiver:
             received_messages = await receiver.receive_messages(
@@ -651,18 +653,15 @@ async def get_responses(
                     props = message.application_properties or {}
                     msg_user_id = props.get("user_id", "unknown")
                     
-                    # Only return and remove messages belonging to the authenticated user.
-                    if msg_user_id == authenticated_user:
-                        responses.append({
-                            "user_id": msg_user_id,
-                            "response": body,
-                            "agent_used": props.get("agent_used", "unknown"),
-                            "timestamp": str(message.enqueued_time_utc) if message.enqueued_time_utc else "N/A",
-                            "message_id": message.message_id
-                        })
-                        await receiver.complete_message(message)
-                    else:
-                        await receiver.abandon_message(message)
+                    responses.append({
+                        "user_id": msg_user_id,
+                        "response": body,
+                        "agent_used": props.get("agent_used", "unknown"),
+                        "timestamp": str(message.enqueued_time_utc) if message.enqueued_time_utc else "N/A",
+                        "message_id": message.message_id
+                    })
+
+                    await receiver.complete_message(message)
                     
                     if len(responses) >= max_messages:
                         break

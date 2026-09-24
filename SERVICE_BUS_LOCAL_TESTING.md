@@ -8,7 +8,7 @@
 
 ### ✅ Service Bus Queues Created
 - `agent-tasks` - for incoming tasks
-- `agent-responses` - for results
+- `agent-responses` - for results, with Service Bus sessions enabled so each user reads only their own responses
 
 ### ✅ Orchestrator Enhanced
 Added Service Bus functionality to `agents/orchestrator/main.py`:

@@ -11,6 +11,22 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-streamlit-ui-ingress
+  namespace: multiagent
+spec:
+  podSelector:
+    matchLabels:
+      app: streamlit-ui
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 8501
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-ui-to-orchestrator
   namespace: multiagent
 spec:

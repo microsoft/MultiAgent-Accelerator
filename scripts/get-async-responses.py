@@ -16,11 +16,12 @@ from azure.identity.aio import AzureCliCredential
 from azure.servicebus.aio import ServiceBusClient
 
 SERVICEBUS_NAMESPACE = "multiagent-dev-servicebus.servicebus.windows.net"
+DEFAULT_USER_ID = os.getenv("USER_ID", "test-user")
 
 
-async def receive_responses(count: int = 1, timeout: int = 30):
+async def receive_responses(count: int = 1, timeout: int = 30, user_id: str = DEFAULT_USER_ID):
     """Receive responses from the agent-responses queue"""
-    print(f"📥 Waiting for up to {count} response(s) (timeout: {timeout}s)...\n")
+    print(f"📥 Waiting for up to {count} response(s) for user '{user_id}' (timeout: {timeout}s)...\n")
     
     credential = AzureCliCredential()
     
@@ -30,6 +31,7 @@ async def receive_responses(count: int = 1, timeout: int = 30):
     ) as client:
         async with client.get_queue_receiver(
             queue_name="agent-responses",
+            session_id=user_id,
             max_wait_time=timeout
         ) as receiver:
             
@@ -63,9 +65,9 @@ async def receive_responses(count: int = 1, timeout: int = 30):
             print(f"✅ Received and processed {len(messages)} response(s)")
 
 
-async def peek_responses(count: int = 10):
+async def peek_responses(count: int = 10, user_id: str = DEFAULT_USER_ID):
     """Peek at responses without removing them from queue"""
-    print(f"👀 Peeking at up to {count} response(s)...\n")
+    print(f"👀 Peeking at up to {count} response(s) for user '{user_id}'...\n")
     
     credential = AzureCliCredential()
     
@@ -74,7 +76,8 @@ async def peek_responses(count: int = 10):
         credential=credential
     ) as client:
         async with client.get_queue_receiver(
-            queue_name="agent-responses"
+            queue_name="agent-responses",
+            session_id=user_id,
         ) as receiver:
             
             messages = await receiver.peek_messages(max_message_count=count)
@@ -125,13 +128,18 @@ async def main():
         default=30,
         help="Timeout in seconds for receive (default: 30)"
     )
+    parser.add_argument(
+        "--user-id",
+        default=DEFAULT_USER_ID,
+        help="User/session ID to receive responses for (default: USER_ID env or test-user)"
+    )
     
     args = parser.parse_args()
     
     if args.action == "peek":
-        await peek_responses(args.count)
+        await peek_responses(args.count, args.user_id)
     else:
-        await receive_responses(args.count, args.timeout)
+        await receive_responses(args.count, args.timeout, args.user_id)
 
 
 if __name__ == "__main__":

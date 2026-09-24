@@ -53,7 +53,7 @@ resource agentResponseQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-p
     lockDuration: 'PT1M'
     maxSizeInMegabytes: 1024
     requiresDuplicateDetection: false
-    requiresSession: false
+    requiresSession: true
     defaultMessageTimeToLive: 'P1D'
     deadLetteringOnMessageExpiration: true
     maxDeliveryCount: 10
