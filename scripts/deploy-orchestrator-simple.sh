@@ -26,17 +26,7 @@ echo ""
 
 # Deploy orchestrator
 echo "📦 Deploying orchestrator..."
-if ! kubectl get secret multiagent-api-auth -n multiagent >/dev/null 2>&1; then
-  echo "🔐 Creating shared API authentication secret..."
-  API_KEY_FILE=$(mktemp)
-  trap 'rm -f "$API_KEY_FILE"' EXIT
-  chmod 600 "$API_KEY_FILE"
-  openssl rand -base64 32 > "$API_KEY_FILE"
-  kubectl create secret generic multiagent-api-auth \
-    -n multiagent \
-    --from-file=api-key="$API_KEY_FILE"
-  rm -f "$API_KEY_FILE"
-fi
+"$(dirname "$0")/ensure-api-auth.sh" multiagent
 
 cat k8s/orchestrator-deployment.yaml | \
   sed "s/\${ACR_NAME}/$ACR_NAME/g" | \

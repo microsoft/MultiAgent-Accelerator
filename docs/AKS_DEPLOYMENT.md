@@ -84,14 +84,7 @@ AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
 kubectl apply -f k8s/namespace-and-sa.yaml
 
 # Create the shared API authentication secret used by the UI, orchestrator, and agents
-API_KEY_FILE=$(mktemp)
-trap 'rm -f "$API_KEY_FILE"' EXIT
-chmod 600 "$API_KEY_FILE"
-openssl rand -base64 32 > "$API_KEY_FILE"
-kubectl create secret generic multiagent-api-auth \
-  --namespace multiagent \
-  --from-file=api-key="$API_KEY_FILE"
-rm -f "$API_KEY_FILE"
+scripts/ensure-api-auth.sh multiagent
 
 # Deploy services with variable substitution
 cat k8s/currency-mcp-deployment.yaml | \

@@ -138,16 +138,7 @@ jobs:
             sed "s/REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID/${{ steps.workload-identity.outputs.client-id }}/g" | \
             kubectl apply -f -
 
-          if ! kubectl get secret multiagent-api-auth -n $NAMESPACE >/dev/null 2>&1; then
-            API_KEY_FILE=$(mktemp)
-            trap 'rm -f "$API_KEY_FILE"' EXIT
-            chmod 600 "$API_KEY_FILE"
-            openssl rand -base64 32 > "$API_KEY_FILE"
-            kubectl create secret generic multiagent-api-auth \
-              -n $NAMESPACE \
-              --from-file=api-key="$API_KEY_FILE"
-            rm -f "$API_KEY_FILE"
-          fi
+          scripts/ensure-api-auth.sh "$NAMESPACE"
           
           echo "✅ Namespace, service account, and auth secret created"
       

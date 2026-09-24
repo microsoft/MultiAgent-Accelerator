@@ -21,7 +21,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-required-egress
+  name: allow-dns-egress
   namespace: multiagent
 spec:
   podSelector: {}
@@ -37,8 +37,46 @@ spec:
       port: 53
     - protocol: TCP
       port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-streamlit-egress-to-orchestrator
+  namespace: multiagent
+spec:
+  podSelector:
+    matchLabels:
+      app: streamlit-ui
+  policyTypes:
+  - Egress
+  egress:
   - to:
-    - podSelector: {}
+    - podSelector:
+        matchLabels:
+          app: orchestrator
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-orchestrator-egress
+  namespace: multiagent
+spec:
+  podSelector:
+    matchLabels:
+      app: orchestrator
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: travel-agent
+    ports:
+    - protocol: TCP
+      port: 8080
   - to:
     - ipBlock:
         cidr: 0.0.0.0/0
@@ -47,6 +85,53 @@ spec:
       port: 443
     - protocol: TCP
       port: 5671
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-travel-agent-egress
+  namespace: multiagent
+spec:
+  podSelector:
+    matchLabels:
+      app: travel-agent
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          component: mcp-server
+    ports:
+    - protocol: TCP
+      port: 8001
+    - protocol: TCP
+      port: 8002
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-currency-mcp-egress
+  namespace: multiagent
+spec:
+  podSelector:
+    matchLabels:
+      app: currency-mcp
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
