@@ -403,7 +403,7 @@ elif page == "🔍 Async Responses":
         with st.spinner("Fetching responses from Service Bus..."):
             try:
                 response = requests.get(
-                    f"{orchestrator_url}/responses/{user_filter}",
+                    f"{orchestrator_url}/responses",
                     params={"max_messages": max_msgs},
                     headers=build_headers(user_filter),
                     timeout=10
@@ -448,7 +448,7 @@ elif page == "🔍 Async Responses":
        bash scripts/view-async-responses.sh
        ```
     
-    2. **Future enhancement**: Add a `/responses/{user_id}` endpoint to the orchestrator
+    2. The `/responses` endpoint returns responses for the authenticated `X-User-ID`
        to fetch responses directly from the Service Bus queue
     """)
     

@@ -604,9 +604,8 @@ async def trigger_discovery(_: None = Depends(require_api_key)):
     }
 
 
-@app.get("/responses/{user_id}")
+@app.get("/responses")
 async def get_responses(
-    user_id: str,
     max_messages: int = 10,
     authenticated_user: str = Depends(require_authenticated_user),
 ):
@@ -624,9 +623,6 @@ async def get_responses(
             status_code=503,
             detail="Service Bus not available"
         )
-
-    if user_id != authenticated_user:
-        raise HTTPException(status_code=403, detail="Cannot access responses for another user")
 
     if max_messages < 1 or max_messages > 50:
         raise HTTPException(status_code=400, detail="max_messages must be between 1 and 50")
@@ -673,7 +669,7 @@ async def get_responses(
         
         return {
             "total": len(responses),
-            "user_id": user_id,
+            "user_id": authenticated_user,
             "responses": responses
         }
         

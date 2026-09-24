@@ -31,10 +31,14 @@ docker push ${ACR_LOGIN_SERVER}/streamlit-ui:latest
 echo "🚀 Deploying to AKS..."
 if ! kubectl get secret multiagent-api-auth -n multiagent >/dev/null 2>&1; then
     echo "🔐 Creating shared API authentication secret..."
-    API_KEY=$(openssl rand -base64 32)
+    API_KEY_FILE=$(mktemp)
+    trap 'rm -f "$API_KEY_FILE"' EXIT
+    chmod 600 "$API_KEY_FILE"
+    openssl rand -base64 32 > "$API_KEY_FILE"
     kubectl create secret generic multiagent-api-auth \
         -n multiagent \
-        --from-literal=api-key="$API_KEY"
+        --from-file=api-key="$API_KEY_FILE"
+    rm -f "$API_KEY_FILE"
 fi
 kubectl apply -f k8s/streamlit-ui-deployment.yaml
 
