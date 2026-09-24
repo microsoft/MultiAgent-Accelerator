@@ -24,6 +24,8 @@ echo "   Client ID: $CLIENT_ID"
 echo "   Tenant ID: $TENANT_ID"
 echo ""
 
+"$(dirname "$0")/check-servicebus-response-queue.sh" multiagent-dev-rg "$SERVICEBUS_NAME"
+
 # Deploy orchestrator
 echo "📦 Deploying orchestrator..."
 "$(dirname "$0")/ensure-api-auth.sh" multiagent

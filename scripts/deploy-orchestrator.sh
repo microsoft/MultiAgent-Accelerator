@@ -24,6 +24,8 @@ echo "   ACR: $ACR_NAME"
 echo "   Service Bus: $SERVICEBUS_NAME"
 echo ""
 
+"$(dirname "$0")/check-servicebus-response-queue.sh" "$RG_NAME" "$SERVICEBUS_NAME"
+
 # Get AKS credentials
 echo "🔑 Getting AKS credentials..."
 az aks get-credentials --resource-group $RG_NAME --name $AKS_NAME --overwrite-existing

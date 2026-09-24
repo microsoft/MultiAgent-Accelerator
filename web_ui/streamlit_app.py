@@ -5,6 +5,7 @@ from datetime import datetime
 import time
 import os
 import ast
+import uuid
 
 # Configuration - use environment variable or default
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://4.150.144.45")
@@ -133,7 +134,10 @@ with st.sidebar:
     st.title("🤖 Multi-Agent System")
     st.markdown("### Settings")
     orchestrator_url = st.text_input("Orchestrator URL", value=ORCHESTRATOR_URL)
-    user_id = st.text_input("User ID", value="streamlit-user")
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = os.getenv("STREAMLIT_USER_ID") or f"streamlit-{uuid.uuid4()}"
+    user_id = st.session_state.user_id
+    st.caption(f"User ID: `{user_id}`")
     
     st.markdown("---")
     st.markdown("### Navigation")
@@ -393,11 +397,7 @@ elif page == "🔍 Async Responses":
     
     st.info("💡 **Tip:** Async tasks are processed in the background. Responses appear here when ready.")
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        user_filter = st.text_input("Filter by User ID (or 'all' for all users):", value=user_id)
-    with col2:
-        max_msgs = st.number_input("Max messages:", min_value=1, max_value=50, value=10)
+    max_msgs = st.number_input("Max messages:", min_value=1, max_value=50, value=10)
     
     if st.button("🔄 Fetch Responses", use_container_width=True, type="primary"):
         with st.spinner("Fetching responses from Service Bus..."):
@@ -405,7 +405,7 @@ elif page == "🔍 Async Responses":
                 response = requests.get(
                     f"{orchestrator_url}/responses",
                     params={"max_messages": max_msgs},
-                    headers=build_headers(user_filter),
+                    headers=build_headers(user_id),
                     timeout=10
                 )
                 

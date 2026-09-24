@@ -76,8 +76,11 @@ for QUEUE in "agent-tasks" "agent-responses"; do
                 --name "$QUEUE" \
                 --query requiresSession -o tsv)
             if [ "$REQUIRES_SESSION" != "true" ]; then
-                echo "   ⚠️  Queue 'agent-responses' must have sessions enabled for user-isolated responses."
-                echo "      Recreate this queue with --requires-session true before using async responses."
+                echo "   ❌ Queue 'agent-responses' must have sessions enabled for user-isolated responses."
+                echo "      Drain or back up pending responses, delete the queue, then recreate it with:"
+                echo "      az servicebus queue delete --namespace-name '$SERVICEBUS_NAME' --resource-group '$RG_NAME' --name agent-responses"
+                echo "      az servicebus queue create --namespace-name '$SERVICEBUS_NAME' --resource-group '$RG_NAME' --name agent-responses --requires-session true"
+                exit 1
             fi
         fi
     else

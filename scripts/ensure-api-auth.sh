@@ -14,7 +14,7 @@ echo "🔐 Creating shared API authentication secret..."
 API_KEY_FILE=$(mktemp)
 trap 'rm -f "$API_KEY_FILE"' EXIT
 chmod 600 "$API_KEY_FILE"
-openssl rand -base64 32 > "$API_KEY_FILE"
+openssl rand -base64 32 | tr -d '\n' > "$API_KEY_FILE"
 
 kubectl create secret generic "$SECRET_NAME" \
     -n "$NAMESPACE" \

@@ -78,6 +78,8 @@ agent-responses
 
 The `agent-responses` queue must have Service Bus sessions enabled. Responses use the authenticated user ID as the session ID so users cannot consume or delete other users' responses.
 
+If `agent-responses` already exists without sessions enabled, Service Bus cannot update it in place. Drain or back up pending responses, delete the queue, and recreate it with `--requires-session true` before deploying the session-based orchestrator.
+
 ## Step 4: Configure Orchestrator for Local Testing
 
 Create `.env` file in `agents/orchestrator/`:
