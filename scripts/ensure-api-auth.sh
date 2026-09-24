@@ -39,12 +39,7 @@ if kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
     SANITIZED_KEY_FILE=$(mktemp)
     TEMP_FILES+=("$EXISTING_KEY_FILE" "$SANITIZED_KEY_FILE")
 
-    kubectl get secret "$SECRET_NAME" \
-        -n "$NAMESPACE" \
-        -o jsonpath='{.data.api-key}' | base64 -d > "$EXISTING_KEY_FILE"
-    tr -d '\r\n' < "$EXISTING_KEY_FILE" > "$SANITIZED_KEY_FILE"
-
-    if ! cmp -s "$EXISTING_KEY_FILE" "$SANITIZED_KEY_FILE"; then
+    if [ ! -s "$EXISTING_KEY_FILE" ] || ! cmp -s "$EXISTING_KEY_FILE" "$SANITIZED_KEY_FILE"; then
         echo "🔐 Existing shared API authentication secret contains newline characters; rotating it..."
         kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE"
         create_secret
