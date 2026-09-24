@@ -17,7 +17,6 @@ Architecture:
 
 import os
 import json
-import hashlib
 import logging
 import asyncio
 import secrets
@@ -120,9 +119,8 @@ def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) 
     raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-def _principal_for_shared_key(api_key: str) -> str:
-    """Derive a stable identity for callers authenticated with the shared API key."""
-    return f"client-{hashlib.sha256(api_key.encode('utf-8')).hexdigest()[:16]}"
+# Identity assigned to every caller authenticated with the shared API key
+SHARED_KEY_PRINCIPAL = "shared-client"
 
 
 def require_authenticated_user(
@@ -145,7 +143,7 @@ def require_authenticated_user(
             return candidate_user
 
     if x_api_key and MULTIAGENT_API_KEY and secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
-        return _principal_for_shared_key(MULTIAGENT_API_KEY)
+        return SHARED_KEY_PRINCIPAL
 
     raise HTTPException(status_code=401, detail="API key is not associated with a user")
 
