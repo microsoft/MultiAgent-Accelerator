@@ -16,6 +16,7 @@ Architecture:
 """
 
 import os
+import json
 import logging
 import asyncio
 import secrets
@@ -51,6 +52,28 @@ ORCHESTRATOR_PORT = int(os.getenv("PORT", "8000"))
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() not in ("false", "0", "no")
 MULTIAGENT_API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
 
+
+def _load_user_api_keys() -> Dict[str, str]:
+    """Load a mapping of per-user API keys from USER_API_KEYS (JSON: {"api_key": "user_id"}).
+
+    This allows the caller's identity to be bound to the credential it presented,
+    rather than to an arbitrary client-supplied X-User-ID header.
+    """
+    raw = os.getenv("USER_API_KEYS")
+    if not raw:
+        return {}
+    try:
+        mapping = json.loads(raw)
+        if not isinstance(mapping, dict):
+            raise ValueError("USER_API_KEYS must be a JSON object")
+        return {str(k): str(v) for k, v in mapping.items()}
+    except (json.JSONDecodeError, ValueError) as exc:
+        logging.getLogger(__name__).error(f"Invalid USER_API_KEYS configuration: {exc}")
+        return {}
+
+
+USER_API_KEYS = _load_user_api_keys()
+
 # Agent discovery endpoints (can be configured via environment)
 AGENT_ENDPOINTS = os.getenv(
     "AGENT_ENDPOINTS",
@@ -68,21 +91,40 @@ def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) 
     if not AUTH_ENABLED:
         return
 
-    if not MULTIAGENT_API_KEY:
+    if not MULTIAGENT_API_KEY and not USER_API_KEYS:
         raise HTTPException(
             status_code=503,
             detail="API authentication is enabled but MULTIAGENT_API_KEY is not configured",
         )
 
-    if not x_api_key or not secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    if x_api_key:
+        if MULTIAGENT_API_KEY and secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
+            return
+        for candidate_key in USER_API_KEYS:
+            if secrets.compare_digest(x_api_key, candidate_key):
+                return
+
+    raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 def require_authenticated_user(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
     _: None = Depends(require_api_key),
 ) -> str:
-    """Require a caller identity for APIs that access user-scoped data."""
+    """Require a caller identity for APIs that access user-scoped data.
+
+    When per-user API keys are configured (USER_API_KEYS), the caller's identity is
+    derived from the authenticated credential itself rather than trusted from the
+    client-supplied X-User-ID header, preventing a caller from impersonating another
+    user's session simply by guessing/choosing a different user ID.
+    """
+    if USER_API_KEYS:
+        for candidate_key, candidate_user in USER_API_KEYS.items():
+            if x_api_key and secrets.compare_digest(x_api_key, candidate_key):
+                return candidate_user
+        raise HTTPException(status_code=401, detail="API key is not associated with a user")
+
     user_id = (x_user_id or "").strip()
     if not user_id:
         raise HTTPException(status_code=400, detail="Missing X-User-ID header")

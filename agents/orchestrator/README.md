@@ -235,6 +235,12 @@ curl -X POST http://localhost:8000/task \
   -d '{"task": "Recommend restaurants in Tokyo"}'
 ```
 
+> **Note:** With a single shared `MULTIAGENT_API_KEY`, the `X-User-ID` header is only
+> a caller-supplied claim, so any holder of the shared key can access another user's
+> Service Bus session. For real deployments, configure `USER_API_KEYS` (a JSON object
+> mapping each per-user API key to its user ID, e.g. `{"alice-key": "alice"}`) so the
+> user identity is derived from the authenticated credential instead of the header.
+
 ## 🐳 Docker
 
 **Build**:
