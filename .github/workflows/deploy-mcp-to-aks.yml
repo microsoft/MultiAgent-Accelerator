@@ -211,11 +211,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🌐 Access" >> $GITHUB_STEP_SUMMARY
           
-          if [ -n "${{ steps.get-ip.outputs.external-ip }}" ]; then
-            echo "Travel Agent: http://${{ steps.get-ip.outputs.external-ip }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "External IP pending - check service status" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "Travel Agent: internal ClusterIP service; use authenticated ingress or port-forward" >> $GITHUB_STEP_SUMMARY
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📊 Resources" >> $GITHUB_STEP_SUMMARY
