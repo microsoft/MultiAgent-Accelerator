@@ -26,6 +26,14 @@ create_secret() {
         --from-file=api-key="$API_KEY_FILE"
 }
 
+restart_secret_consumers() {
+    for deployment in orchestrator travel-agent streamlit-ui; do
+        if kubectl get deployment "$deployment" -n "$NAMESPACE" >/dev/null 2>&1; then
+            kubectl rollout restart deployment/"$deployment" -n "$NAMESPACE"
+        fi
+    done
+}
+
 if kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
     EXISTING_KEY_FILE=$(mktemp)
     SANITIZED_KEY_FILE=$(mktemp)
@@ -40,6 +48,7 @@ if kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
         echo "🔐 Existing shared API authentication secret contains newline characters; rotating it..."
         kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE"
         create_secret
+        restart_secret_consumers
         exit 0
     fi
 
