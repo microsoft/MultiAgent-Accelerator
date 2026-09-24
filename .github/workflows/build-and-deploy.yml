@@ -41,17 +41,26 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component:
-          - orchestrator
-          - data-agent
-          - code-agent
-          - research-agent
-          - web-ui-backend
-          - web-ui-frontend
+        include:
+          - image: orchestrator
+            context: ./agents/orchestrator
+            dockerfile: ./agents/orchestrator/Dockerfile
+          - image: travel-agent
+            context: ./agents/travel_agent
+            dockerfile: ./agents/travel_agent/Dockerfile
+          - image: activity-mcp
+            context: ./mcp_servers/activity_mcp
+            dockerfile: ./mcp_servers/activity_mcp/Dockerfile
+          - image: currency-mcp
+            context: ./mcp_servers/currency_mcp
+            dockerfile: ./mcp_servers/currency_mcp/Dockerfile
+          - image: streamlit-ui
+            context: ./web_ui
+            dockerfile: ./web_ui/Dockerfile
     env:
-      # Secrets are not available to pull_request runs triggered from forks.
-      # Skip the Azure/registry steps in that case, but still validate the build.
-      IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      # Azure credentials are not always available to PR validation runs.
+      # Skip Azure/registry steps without them, but still validate the build.
+      HAS_AZURE_CREDENTIALS: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,7 +69,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Azure Login
-        if: env.IS_FORK_PR != 'true'
+        if: env.HAS_AZURE_CREDENTIALS == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -68,7 +77,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Get ACR name
-        if: env.IS_FORK_PR != 'true'
+        if: env.HAS_AZURE_CREDENTIALS == 'true'
         id: acr
         run: |
           ENV=${{ github.event.inputs.environment || 'dev' }}
@@ -77,29 +86,29 @@ jobs:
           echo "acr_login_server=${ACR_NAME}.azurecr.io" >> $GITHUB_OUTPUT
 
       - name: Login to ACR
-        if: env.IS_FORK_PR != 'true'
+        if: env.HAS_AZURE_CREDENTIALS == 'true'
         run: |
           az acr login --name ${{ steps.acr.outputs.acr_name }}
 
       - name: Build and Push Docker Image
-        if: env.IS_FORK_PR != 'true'
+        if: env.HAS_AZURE_CREDENTIALS == 'true'
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./${{ matrix.component }}/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ steps.acr.outputs.acr_login_server }}/${{ matrix.component }}:${{ github.sha }}
-            ${{ steps.acr.outputs.acr_login_server }}/${{ matrix.component }}:latest
-          cache-from: type=registry,ref=${{ steps.acr.outputs.acr_login_server }}/${{ matrix.component }}:buildcache
-          cache-to: type=registry,ref=${{ steps.acr.outputs.acr_login_server }}/${{ matrix.component }}:buildcache,mode=max
+            ${{ steps.acr.outputs.acr_login_server }}/${{ matrix.image }}:${{ github.sha }}
+            ${{ steps.acr.outputs.acr_login_server }}/${{ matrix.image }}:latest
+          cache-from: type=registry,ref=${{ steps.acr.outputs.acr_login_server }}/${{ matrix.image }}:buildcache
+          cache-to: type=registry,ref=${{ steps.acr.outputs.acr_login_server }}/${{ matrix.image }}:buildcache,mode=max
 
-      - name: Build Docker Image (fork PR validation, no push)
-        if: env.IS_FORK_PR == 'true'
+      - name: Build Docker Image (PR validation, no push)
+        if: env.HAS_AZURE_CREDENTIALS != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./${{ matrix.component }}/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: false
 
   deploy-dev:
