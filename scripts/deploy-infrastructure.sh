@@ -137,6 +137,9 @@ else
     fi
 fi
 
+SERVICEBUS_NAME="${PROJECT_NAME}-${ENVIRONMENT}-servicebus"
+"$SCRIPT_DIR/check-servicebus-response-queue.sh" "$RESOURCE_GROUP" "$SERVICEBUS_NAME"
+
 # Validate the bicep template
 echo ""
 echo "🔍 Validating Bicep template..."

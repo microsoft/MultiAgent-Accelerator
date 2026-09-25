@@ -16,14 +16,17 @@ Architecture:
 """
 
 import os
+import json
 import logging
 import asyncio
+import secrets
 from typing import Optional, Dict, List, Any
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
@@ -47,6 +50,41 @@ logger = logging.getLogger(__name__)
 SERVICEBUS_NAMESPACE = os.getenv("SERVICEBUS_NAMESPACE", "")
 USE_MANAGED_IDENTITY = os.getenv("USE_MANAGED_IDENTITY", "true").lower() == "true"
 ORCHESTRATOR_PORT = int(os.getenv("PORT", "8000"))
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() not in ("false", "0", "no")
+MULTIAGENT_API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
+
+
+def _load_user_api_keys() -> Dict[str, str]:
+    """Load a mapping of per-user API keys from USER_API_KEYS (JSON: {"api_key": "user_id"}).
+
+    This allows the caller's identity to be bound to the credential it presented,
+    rather than to an arbitrary client-supplied X-User-ID header.
+    """
+    raw = os.getenv("USER_API_KEYS")
+    if not raw:
+        return {}
+    try:
+        mapping = json.loads(raw)
+        if not isinstance(mapping, dict):
+            raise ValueError("USER_API_KEYS must be a JSON object")
+        return {str(k): str(v) for k, v in mapping.items()}
+    except (json.JSONDecodeError, ValueError) as exc:
+        logging.getLogger(__name__).error(f"Invalid USER_API_KEYS configuration: {exc}")
+        return {}
+
+
+USER_API_KEYS = _load_user_api_keys()
+
+# Credential used when calling externally hosted agents (e.g. GCP Cloud Run), so the
+# internal shared key is never sent to endpoints outside the cluster.
+EXTERNAL_AGENT_API_KEY = os.getenv("EXTERNAL_AGENT_API_KEY") or os.getenv("GCP_AGENT_API_KEY")
+
+# Extra agent base URL prefixes that are trusted with the internal MULTIAGENT_API_KEY
+TRUSTED_AGENT_URL_PREFIXES = [
+    prefix.strip()
+    for prefix in os.getenv("TRUSTED_AGENT_URL_PREFIXES", "").split(",")
+    if prefix.strip()
+]
 
 # Agent discovery endpoints (can be configured via environment)
 AGENT_ENDPOINTS = os.getenv(
@@ -58,6 +96,56 @@ AGENT_ENDPOINTS = os.getenv(
 discovered_agents: Dict[str, Dict[str, Any]] = {}
 service_bus_client: Optional[ServiceBusClient] = None
 queue_processor_task: Optional[asyncio.Task] = None
+
+
+def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
+    """Require API key authentication for non-public API endpoints."""
+    if not AUTH_ENABLED:
+        return
+
+    if not MULTIAGENT_API_KEY and not USER_API_KEYS:
+        raise HTTPException(
+            status_code=503,
+            detail="API authentication is enabled but MULTIAGENT_API_KEY is not configured",
+        )
+
+    if x_api_key:
+        if MULTIAGENT_API_KEY and secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
+            return
+        for candidate_key in USER_API_KEYS:
+            if secrets.compare_digest(x_api_key, candidate_key):
+                return
+
+    raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+# Identity assigned to every caller authenticated with the shared API key
+SHARED_KEY_PRINCIPAL = "shared-client"
+
+
+def require_authenticated_user(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    _: None = Depends(require_api_key),
+) -> str:
+    """Require a caller identity for APIs that access user-scoped data.
+
+    The identity is always derived from the authenticated credential, never from the
+    client-supplied X-User-ID header, so a caller cannot read or write another
+    user's Service Bus session simply by choosing a different user ID. Configure
+    USER_API_KEYS to give each user its own credential and therefore its own
+    isolated session; callers sharing MULTIAGENT_API_KEY share a single identity.
+    """
+    if not AUTH_ENABLED:
+        return "anonymous"
+
+    for candidate_key, candidate_user in USER_API_KEYS.items():
+        if x_api_key and secrets.compare_digest(x_api_key, candidate_key):
+            return candidate_user
+
+    if x_api_key and MULTIAGENT_API_KEY and secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
+        return SHARED_KEY_PRINCIPAL
+
+    raise HTTPException(status_code=401, detail="API key is not associated with a user")
 
 
 async def process_queue_messages():
@@ -95,6 +183,7 @@ async def process_queue_messages():
                                 async with service_bus_client.get_queue_sender(queue_name="agent-responses") as sender:
                                     response_msg = ServiceBusMessage(
                                         body=result,
+                                        session_id=user_id,
                                         application_properties={
                                             "user_id": user_id,
                                             "agent_used": selected_agent,
@@ -298,6 +387,26 @@ def select_best_agent(task: str, preferred_agent: Optional[str] = None) -> Optio
     return None
 
 
+def _is_trusted_internal_agent(base_url: str) -> bool:
+    """Check whether an agent endpoint is an internal (in-cluster) endpoint.
+
+    Only internal endpoints receive the shared MULTIAGENT_API_KEY; externally hosted
+    agents are called with their own credential instead.
+    """
+    if any(base_url.startswith(prefix) for prefix in TRUSTED_AGENT_URL_PREFIXES):
+        return True
+
+    hostname = (urlparse(base_url).hostname or "").lower()
+    if not hostname:
+        return False
+
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return True
+
+    # Kubernetes service addresses are single-label or *.svc[.cluster.local]
+    return "." not in hostname or hostname.endswith(".svc") or ".svc." in hostname
+
+
 async def call_agent(agent_name: str, task: str, user_id: str) -> str:
     """
     Call a specific agent to execute a task
@@ -333,10 +442,18 @@ async def call_agent(agent_name: str, task: str, user_id: str) -> str:
     logger.info(f"📞 Calling {agent_name} at {task_url}")
     
     try:
+        headers = {"X-User-ID": user_id}
+        if _is_trusted_internal_agent(agent_base_url):
+            if MULTIAGENT_API_KEY:
+                headers["X-API-Key"] = MULTIAGENT_API_KEY
+        elif EXTERNAL_AGENT_API_KEY:
+            headers["X-API-Key"] = EXTERNAL_AGENT_API_KEY
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 task_url,
-                json={"task": task, "user_id": user_id}
+                json={"task": task, "user_id": user_id},
+                headers=headers,
             )
             response.raise_for_status()
             result = response.json()
@@ -437,7 +554,7 @@ async def health():
 
 
 @app.get("/agents")
-async def list_agents():
+async def list_agents(_: None = Depends(require_api_key)):
     """List all discovered agents and their capabilities"""
     agents_info = []
     
@@ -461,7 +578,10 @@ async def list_agents():
 
 
 @app.post("/task", response_model=TaskResponse)
-async def execute_task(request: TaskRequest):
+async def execute_task(
+    request: TaskRequest,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Execute a task by routing it to the appropriate agent
     
@@ -471,6 +591,7 @@ async def execute_task(request: TaskRequest):
     3. Routes the request to that agent
     4. Returns the result
     """
+    request.user_id = authenticated_user
     logger.info(f"📝 New task from {request.user_id}: {request.task}")
     
     if not discovered_agents:
@@ -506,7 +627,10 @@ async def execute_task(request: TaskRequest):
 
 
 @app.post("/task/async")
-async def execute_task_async(request: TaskRequest):
+async def execute_task_async(
+    request: TaskRequest,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Queue a task for async processing via Service Bus
     
@@ -521,6 +645,7 @@ async def execute_task_async(request: TaskRequest):
             detail="Service Bus not available. Use /task for synchronous execution."
         )
     
+    request.user_id = authenticated_user
     logger.info(f"📬 Queueing task from {request.user_id}: {request.task}")
     
     try:
@@ -551,7 +676,7 @@ async def execute_task_async(request: TaskRequest):
 
 
 @app.post("/discover")
-async def trigger_discovery():
+async def trigger_discovery(_: None = Depends(require_api_key)):
     """Manually trigger agent discovery"""
     await discover_all_agents()
     return {
@@ -561,8 +686,11 @@ async def trigger_discovery():
     }
 
 
-@app.get("/responses/{user_id}")
-async def get_responses(user_id: str, max_messages: int = 10):
+@app.get("/responses")
+async def get_responses(
+    max_messages: int = 10,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Fetch async responses for a specific user from Service Bus queue
     
@@ -577,16 +705,24 @@ async def get_responses(user_id: str, max_messages: int = 10):
             status_code=503,
             detail="Service Bus not available"
         )
+
+    if max_messages < 1 or max_messages > 50:
+        raise HTTPException(status_code=400, detail="max_messages must be between 1 and 50")
     
     try:
         responses = []
         
         async with service_bus_client.get_queue_receiver(
             queue_name="agent-responses",
+            session_id=authenticated_user,
             max_wait_time=5
         ) as receiver:
-            # Receive messages (peek and delete)
-            async for message in receiver:
+            received_messages = await receiver.receive_messages(
+                max_message_count=max_messages,
+                max_wait_time=5,
+            )
+
+            for message in received_messages:
                 try:
                     # Get message body
                     body = str(message)
@@ -595,17 +731,14 @@ async def get_responses(user_id: str, max_messages: int = 10):
                     props = message.application_properties or {}
                     msg_user_id = props.get("user_id", "unknown")
                     
-                    # Filter by user_id if it matches or include all if no filter
-                    if user_id == "all" or msg_user_id == user_id:
-                        responses.append({
-                            "user_id": msg_user_id,
-                            "response": body,
-                            "agent_used": props.get("agent_used", "unknown"),
-                            "timestamp": str(message.enqueued_time_utc) if message.enqueued_time_utc else "N/A",
-                            "message_id": message.message_id
-                        })
-                    
-                    # Complete the message (remove from queue)
+                    responses.append({
+                        "user_id": msg_user_id,
+                        "response": body,
+                        "agent_used": props.get("agent_used", "unknown"),
+                        "timestamp": str(message.enqueued_time_utc) if message.enqueued_time_utc else "N/A",
+                        "message_id": message.message_id
+                    })
+
                     await receiver.complete_message(message)
                     
                     if len(responses) >= max_messages:
@@ -618,7 +751,7 @@ async def get_responses(user_id: str, max_messages: int = 10):
         
         return {
             "total": len(responses),
-            "user_id": user_id,
+            "user_id": authenticated_user,
             "responses": responses
         }
         

@@ -24,6 +24,8 @@ echo "   ACR: $ACR_NAME"
 echo "   Service Bus: $SERVICEBUS_NAME"
 echo ""
 
+"$(dirname "$0")/check-servicebus-response-queue.sh" "$RG_NAME" "$SERVICEBUS_NAME"
+
 # Get AKS credentials
 echo "🔑 Getting AKS credentials..."
 az aks get-credentials --resource-group $RG_NAME --name $AKS_NAME --overwrite-existing
@@ -104,6 +106,8 @@ echo ""
 # Apply Kubernetes manifests
 echo "☸️  Deploying to Kubernetes..."
 
+"$(dirname "$0")/ensure-api-auth.sh" multiagent
+
 # Substitute variables in the deployment file
 cat k8s/orchestrator-deployment.yaml | \
     sed "s/\${ACR_NAME}/$ACR_NAME/g" | \
@@ -128,13 +132,18 @@ echo "🧪 Test the orchestrator:"
 echo "   kubectl port-forward -n multiagent svc/orchestrator-service 8000:8000"
 echo ""
 echo "   Then in another terminal:"
+echo "   API_KEY=\$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)"
 echo "   curl -X POST http://localhost:8000/task \\"
 echo "     -H 'Content-Type: application/json' \\"
+echo "     -H \"X-API-Key: \$API_KEY\" \\"
+echo "     -H 'X-User-ID: test-user' \\"
 echo "     -d '{\"task\": \"What is 100 USD in EUR?\"}'"
 echo ""
 echo "📬 Test Service Bus integration:"
 echo "   curl -X POST http://localhost:8000/task/async \\"
 echo "     -H 'Content-Type: application/json' \\"
+echo "     -H \"X-API-Key: \$API_KEY\" \\"
+echo "     -H 'X-User-ID: test-user' \\"
 echo "     -d '{\"task\": \"Find restaurants in Paris\"}'"
 echo ""
 echo "=============================================="

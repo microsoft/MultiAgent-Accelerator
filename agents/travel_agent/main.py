@@ -14,12 +14,13 @@ Architecture:
 
 import os
 import logging
+import secrets
 from typing import Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -44,9 +45,37 @@ AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 CURRENCY_MCP_URL = os.getenv("CURRENCY_MCP_URL", "http://localhost:8001")
 ACTIVITY_MCP_URL = os.getenv("ACTIVITY_MCP_URL", "http://localhost:8002")
 AGENT_PORT = int(os.getenv("PORT", "8080"))
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() not in ("false", "0", "no")
+MULTIAGENT_API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
 
 # Global agent instance
 travel_agent: Optional[ChatAgent] = None
+
+
+def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
+    """Require API key authentication for task execution."""
+    if not AUTH_ENABLED:
+        return
+
+    if not MULTIAGENT_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="API authentication is enabled but MULTIAGENT_API_KEY is not configured",
+        )
+
+    if not x_api_key or not secrets.compare_digest(x_api_key, MULTIAGENT_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def require_authenticated_user(
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+    _: None = Depends(require_api_key),
+) -> str:
+    """Require a caller identity for user-scoped task execution."""
+    user_id = (x_user_id or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Missing X-User-ID header")
+    return user_id
 
 
 def get_azure_credential():
@@ -192,7 +221,10 @@ async def health():
 
 
 @app.post("/task", response_model=TaskResponse)
-async def execute_task(request: TaskRequest):
+async def execute_task(
+    request: TaskRequest,
+    authenticated_user: str = Depends(require_authenticated_user),
+):
     """
     Execute a travel planning task
     
@@ -204,7 +236,8 @@ async def execute_task(request: TaskRequest):
     """
     if travel_agent is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    
+
+    request.user_id = authenticated_user
     logger.info(f"📝 Task from {request.user_id}: {request.task}")
     
     try:

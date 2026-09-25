@@ -147,6 +147,15 @@ Health check endpoint
 | `AGENT_ENDPOINTS` | Comma-separated list of agent card URLs | See below | Yes |
 | `SERVICEBUS_NAMESPACE` | Azure Service Bus namespace | - | No |
 | `USE_MANAGED_IDENTITY` | Use managed identity (true/false) | `true` | No |
+| `AUTH_ENABLED` | Require an API key on non-public endpoints | `true` | No |
+| `MULTIAGENT_API_KEY` | Shared API key for internal callers and internal agents | - | Yes (when auth enabled) |
+| `USER_API_KEYS` | JSON object mapping per-user API keys to user IDs (e.g. `{"alice-key": "alice"}`) used to derive the caller identity that scopes Service Bus sessions | - | No |
+| `EXTERNAL_AGENT_API_KEY` | API key sent to externally hosted agents (also read from `GCP_AGENT_API_KEY`) | - | No |
+| `TRUSTED_AGENT_URL_PREFIXES` | Extra agent base URL prefixes trusted with `MULTIAGENT_API_KEY` | - | No |
+
+> **Note**: user-scoped data (async responses) is isolated by the identity derived from
+> the presented API key, not by the `X-User-ID` header. Configure `USER_API_KEYS` to give
+> each user its own isolated identity.
 
 **Default Agent Endpoints**:
 ```
@@ -201,11 +210,13 @@ python main.py
 ### Test Agent Discovery
 
 ```bash
+export MULTIAGENT_API_KEY="<shared-api-key>"
+
 # Check discovered agents
-curl http://localhost:8000/agents
+curl -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/agents
 
 # Trigger re-discovery
-curl -X POST http://localhost:8000/discover
+curl -X POST -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/discover
 ```
 
 ### Test Request Routing
@@ -214,18 +225,30 @@ curl -X POST http://localhost:8000/discover
 # Currency task (should route to travel_agent)
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{"task": "Convert 500 USD to EUR"}'
 
 # Travel task (should route to travel_agent)
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{"task": "Plan a 2-day trip to Paris"}'
 
 # Restaurant task (should route to travel_agent)
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{"task": "Recommend restaurants in Tokyo"}'
 ```
+
+> **Note:** The `X-User-ID` header is never trusted for isolation: async responses are
+> scoped to the identity of the presented API key. All callers sharing
+> `MULTIAGENT_API_KEY` therefore share a single identity. For real deployments configure
+> `USER_API_KEYS` (a JSON object mapping each per-user API key to its user ID, e.g.
+> `{"alice-key": "alice"}`) so every user gets its own isolated session.
 
 ## 🐳 Docker
 

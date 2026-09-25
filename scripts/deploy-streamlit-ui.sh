@@ -29,41 +29,22 @@ docker push ${ACR_LOGIN_SERVER}/streamlit-ui:latest
 
 # Deploy to AKS
 echo "🚀 Deploying to AKS..."
+"$(dirname "$0")/ensure-api-auth.sh" multiagent
 kubectl apply -f k8s/streamlit-ui-deployment.yaml
 
 # Wait for deployment
 echo "⏳ Waiting for deployment to complete..."
 kubectl rollout status deployment/streamlit-ui -n multiagent --timeout=120s
 
-# Get external IP
 echo ""
 echo "✅ Streamlit UI deployed successfully!"
 echo ""
-echo "🌐 Getting external IP address..."
-echo "   (This may take a few minutes for LoadBalancer to provision)"
+echo "🔒 Streamlit UI service is internal by default."
+echo "   Development access:"
+echo "   kubectl port-forward -n multiagent svc/streamlit-ui-service 8501:80"
 echo ""
-
-# Wait for external IP
-for i in {1..30}; do
-    EXTERNAL_IP=$(kubectl get svc streamlit-ui-service -n multiagent -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-    if [ -n "$EXTERNAL_IP" ]; then
-        echo "✅ Streamlit UI is available at: http://${EXTERNAL_IP}"
-        echo ""
-        echo "📝 You can now:"
-        echo "   1. Open http://${EXTERNAL_IP} in your browser"
-        echo "   2. View discovered agents"
-        echo "   3. Submit tasks (sync/async)"
-        echo "   4. Monitor your multi-agent system"
-        break
-    fi
-    echo "   Waiting for external IP... (attempt $i/30)"
-    sleep 5
-done
-
-if [ -z "$EXTERNAL_IP" ]; then
-    echo "⚠️  External IP not yet assigned. Check status with:"
-    echo "   kubectl get svc streamlit-ui-service -n multiagent"
-fi
+echo "   For production, expose the UI only through authenticated ingress,"
+echo "   Azure Application Gateway, or API Management."
 
 echo ""
 echo "📊 View logs with:"

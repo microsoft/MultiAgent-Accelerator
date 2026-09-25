@@ -8,7 +8,7 @@
 
 ### ✅ Service Bus Queues Created
 - `agent-tasks` - for incoming tasks
-- `agent-responses` - for results
+- `agent-responses` - for results, with Service Bus sessions enabled so each user reads only their own responses
 
 ### ✅ Orchestrator Enhanced
 Added Service Bus functionality to `agents/orchestrator/main.py`:
@@ -53,9 +53,13 @@ cd agents/orchestrator && ../../.venv/Scripts/python.exe main.py
 ### Step 3: Test Service Bus Integration
 
 ```bash
+export MULTIAGENT_API_KEY="<shared-api-key>"
+
 # Send task to Service Bus (async)
 curl -X POST http://localhost:8000/task/async \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test-123" \
   -d '{"task": "What is 100 USD in EUR?", "user_id": "test-123"}'
 
 # Watch the orchestrator terminal - it will automatically:
@@ -125,6 +129,8 @@ az servicebus queue show \
 ```bash
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test-123" \
   -d '{"task": "What is 100 USD in EUR?"}'
 ```
 - ⚡ Immediate response
@@ -135,6 +141,8 @@ curl -X POST http://localhost:8000/task \
 ```bash
 curl -X POST http://localhost:8000/task/async \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test-123" \
   -d '{"task": "What is 100 USD in EUR?"}'
 ```
 - 📬 Returns message ID immediately
