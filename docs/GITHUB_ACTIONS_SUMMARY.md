@@ -94,9 +94,8 @@ The workflow runs when:
 ┌─────────────────────────────────────────────────────────────┐
 │ 6. Verification Phase                                       │
 │    - Wait for pods to be ready (5 min timeout)              │
-│    - Get external IP                                        │
-│    - Test health endpoint                                   │
-│    - Test currency exchange functionality                   │
+│    - Confirm internal services and pod status               │
+│    - Require authenticated ingress or port-forward access   │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
@@ -165,7 +164,7 @@ namespace/multiagent
 └── Services:
     ├── currency-mcp-service (ClusterIP + Session Affinity)
     ├── activity-mcp-service (ClusterIP + Session Affinity)
-    └── travel-agent-service (LoadBalancer)
+    └── travel-agent-service (ClusterIP)
 ```
 
 ## 🧪 Testing After Deployment
@@ -174,11 +173,15 @@ The workflow automatically tests the deployment:
 
 ```bash
 # Health check
-curl http://<external-ip>/health
+kubectl port-forward -n multiagent service/travel-agent-service 8080:80
+API_KEY=$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)
+curl http://localhost:8080/health
 
 # Functionality test
-curl -X POST http://<external-ip>/task \
+curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "What is the exchange rate from USD to EUR?"}'
 ```
 
@@ -278,9 +281,12 @@ git push origin main
 
 Once complete, test the deployed service:
 ```bash
-kubectl get service travel-agent-service -n multiagent
-curl http://<external-ip>/task \
+kubectl port-forward -n multiagent service/travel-agent-service 8080:80
+API_KEY=$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)
+curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "Convert 100 USD to EUR"}'
 ```
 

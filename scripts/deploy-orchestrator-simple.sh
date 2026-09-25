@@ -24,8 +24,12 @@ echo "   Client ID: $CLIENT_ID"
 echo "   Tenant ID: $TENANT_ID"
 echo ""
 
+"$(dirname "$0")/check-servicebus-response-queue.sh" multiagent-dev-rg "$SERVICEBUS_NAME"
+
 # Deploy orchestrator
 echo "📦 Deploying orchestrator..."
+"$(dirname "$0")/ensure-api-auth.sh" multiagent
+
 cat k8s/orchestrator-deployment.yaml | \
   sed "s/\${ACR_NAME}/$ACR_NAME/g" | \
   sed "s/\${SERVICEBUS_NAMESPACE}/$SERVICEBUS_NAMESPACE/g" | \
@@ -39,8 +43,8 @@ echo ""
 echo "📊 Checking status..."
 kubectl get pods -n multiagent -l app=orchestrator
 echo ""
-echo "🔍 Get external IP (may take a few minutes):"
-echo "   kubectl get svc orchestrator-service -n multiagent"
+echo "🔒 Orchestrator is internal. For development access:"
+echo "   kubectl port-forward -n multiagent svc/orchestrator-service 8000:80"
 echo ""
 echo "📝 View logs:"
 echo "   kubectl logs -n multiagent -l app=orchestrator --tail=50 -f"

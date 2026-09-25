@@ -244,7 +244,7 @@ kind: Service
 metadata:
   name: gcp-adk-agent-service
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: gcp-adk-agent
   ports:
@@ -257,7 +257,7 @@ spec:
 ```bash
 kubectl apply -f gcp-agent-deployment.yaml
 
-# Get external IP
+# Check the internal service
 kubectl get service gcp-adk-agent-service
 ```
 
@@ -386,12 +386,14 @@ curl -X POST https://your-gcp-agent-url.run.app/execute \
 ### Test via Orchestrator
 
 ```bash
-# Get orchestrator external IP
-kubectl get svc orchestrator-service -n multiagent
+kubectl port-forward -n multiagent service/orchestrator-service 8000:80
+API_KEY=$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)
 
 # Send task to orchestrator (it will route to GCP agent if matched)
-curl -X POST http://ORCHESTRATOR_IP/task \
+curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{
     "task": "Find flights from NYC to LAX"
   }'
@@ -401,7 +403,7 @@ curl -X POST http://ORCHESTRATOR_IP/task \
 
 ```bash
 # List all discovered agents
-curl http://ORCHESTRATOR_IP/agents
+curl -H "X-API-Key: $API_KEY" http://localhost:8000/agents
 
 # Should show both AKS and GCP agents
 ```

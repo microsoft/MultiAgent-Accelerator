@@ -22,6 +22,11 @@ spec:
         env:
         - name: ORCHESTRATOR_URL
           value: "http://orchestrator-service"
+        - name: MULTIAGENT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: multiagent-api-auth
+              key: api-key
         resources:
           requests:
             memory: "256Mi"
@@ -48,7 +53,7 @@ metadata:
   name: streamlit-ui-service
   namespace: multiagent
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector:
     app: streamlit-ui
   ports:

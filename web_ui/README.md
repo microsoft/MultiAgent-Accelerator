@@ -21,9 +21,10 @@ A modern web interface for the Multi-Agent Orchestrator system built with Stream
    ```
 
 2. **Configure orchestrator URL:**
-   Edit `.streamlit/secrets.toml` and set your orchestrator URL:
-   ```toml
-   ORCHESTRATOR_URL = "http://4.150.144.45"
+   Set your orchestrator URL and shared API key:
+   ```bash
+   export ORCHESTRATOR_URL="http://localhost:8000"
+   export MULTIAGENT_API_KEY="<shared-api-key>"
    ```
 
 3. **Run locally:**
@@ -42,7 +43,7 @@ A modern web interface for the Multi-Agent Orchestrator system built with Stream
    ```
 
 2. **Access the UI:**
-   The script will display the external IP address once the LoadBalancer is provisioned.
+   The Kubernetes service is internal by default. Use `kubectl port-forward` for development, or publish the UI through an authenticated ingress, Azure Application Gateway, or API Management.
 
 3. **Manual deployment:**
    ```bash
@@ -53,8 +54,8 @@ A modern web interface for the Multi-Agent Orchestrator system built with Stream
    # Deploy to Kubernetes
    kubectl apply -f k8s/streamlit-ui-deployment.yaml
    
-   # Get external IP
-   kubectl get svc streamlit-ui-service -n multiagent
+   # Development access
+   kubectl port-forward -n multiagent service/streamlit-ui-service 8501:80
    ```
 
 ## Usage
@@ -88,12 +89,13 @@ A modern web interface for the Multi-Agent Orchestrator system built with Stream
 ### Environment Variables
 
 - `ORCHESTRATOR_URL`: URL of the orchestrator service (default: http://4.150.144.45)
+- `MULTIAGENT_API_KEY` or `API_KEY`: shared API key sent to the orchestrator.
 
 ### Kubernetes Configuration
 
 The deployment creates:
 - **Deployment**: `streamlit-ui` with 1 replica
-- **Service**: `streamlit-ui-service` (LoadBalancer type)
+- **Service**: `streamlit-ui-service` (ClusterIP type)
 - **Resource Limits**: 256Mi-512Mi memory, 100m-500m CPU
 - **Health Checks**: Liveness and readiness probes on `/_stcore/health`
 
@@ -156,7 +158,8 @@ kubectl get svc streamlit-ui-service -n multiagent
 kubectl rollout restart deployment/streamlit-ui -n multiagent
 
 # Check health
-curl http://<EXTERNAL_IP>/_stcore/health
+kubectl port-forward -n multiagent service/streamlit-ui-service 8501:80
+curl http://localhost:8501/_stcore/health
 ```
 
 ## Future Enhancements

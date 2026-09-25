@@ -103,8 +103,11 @@ curl http://localhost:8080/health
 curl http://localhost:8080/.well-known/agent.json
 
 # Execute a task
+export MULTIAGENT_API_KEY="<shared-api-key>"
 curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: test_user" \
   -d '{
     "task": "Plan a 2-day trip to Paris with a budget of $1000",
     "user_id": "test_user"

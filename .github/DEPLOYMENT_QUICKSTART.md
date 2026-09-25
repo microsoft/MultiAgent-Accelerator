@@ -62,12 +62,15 @@ Go to Actions → "Deploy MCP Services to AKS" → "Run workflow"
 ## Test After Deployment
 
 ```bash
-# Get external IP
-kubectl get service travel-agent-service -n multiagent
+# Port-forward the internal service
+kubectl port-forward -n multiagent service/travel-agent-service 8080:80
+API_KEY=$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)
 
 # Test
-curl -X POST http://EXTERNAL_IP/task \
+curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "What is the exchange rate from USD to EUR?"}'
 ```
 

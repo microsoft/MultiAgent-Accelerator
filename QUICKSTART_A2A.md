@@ -126,7 +126,8 @@ Expected:
 ### Test 2: List Discovered Agents
 
 ```bash
-curl http://localhost:8000/agents
+export MULTIAGENT_API_KEY="<shared-api-key>"
+curl -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/agents
 ```
 
 You'll see the Travel Agent with its 4 skills (currency, travel, restaurants, attractions).
@@ -136,6 +137,8 @@ You'll see the Travel Agent with its 4 skills (currency, travel, restaurants, at
 ```bash
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: quickstart-user" \
   -d '{"task": "Convert 500 USD to EUR"}'
 ```
 
@@ -153,6 +156,8 @@ Expected:
 ```bash
 curl -X POST http://localhost:8000/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MULTIAGENT_API_KEY" \
+  -H "X-User-ID: quickstart-user" \
   -d '{"task": "Plan a 2-day trip to Paris"}'
 ```
 
@@ -287,7 +292,7 @@ python tests/test_orchestrator.py
 **Solutions**:
 1. Start Travel Agent first
 2. Check orchestrator logs for discovery errors
-3. Manually trigger discovery: `curl -X POST http://localhost:8000/discover`
+3. Manually trigger discovery: `curl -X POST -H "X-API-Key: $MULTIAGENT_API_KEY" http://localhost:8000/discover`
 
 ## 📚 Next Steps
 

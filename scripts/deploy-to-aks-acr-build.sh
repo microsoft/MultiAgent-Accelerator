@@ -72,6 +72,8 @@ echo ""
 echo "📦 Creating namespace and service account..."
 kubectl apply -f k8s/namespace-and-sa.yaml
 
+"$(dirname "$0")/ensure-api-auth.sh" multiagent
+
 # Deploy Currency MCP
 echo ""
 echo "🚀 Deploying Currency MCP..."
@@ -96,6 +98,8 @@ cat k8s/travel-agent-deployment.yaml | \
   sed "s/\${AZURE_TENANT_ID}/$AZURE_TENANT_ID/g" | \
   kubectl apply -f -
 
+kubectl apply -f k8s/network-policies.yaml
+
 # Wait for pods to be ready
 echo ""
 echo "⏳ Waiting for pods to be ready..."
@@ -113,28 +117,16 @@ echo ""
 echo "🌐 Services:"
 kubectl get services -n multiagent
 
-# Get external IP
+# Show secure access instructions
 echo ""
-echo "⏳ Waiting for external IP (this may take a few minutes)..."
-for i in {1..30}; do
-    EXTERNAL_IP=$(kubectl get service travel-agent-service -n multiagent -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-    if [ -n "$EXTERNAL_IP" ]; then
-        echo "✅ External IP assigned: $EXTERNAL_IP"
-        break
-    fi
-    echo "  Attempt $i/30: Still waiting..."
-    sleep 10
-done
-
-if [ -z "$EXTERNAL_IP" ]; then
-    echo "⚠️  External IP not yet assigned. Check later with:"
-    echo "    kubectl get service travel-agent-service -n multiagent"
-else
-    echo ""
-    echo "🎉 Deployment complete!"
-    echo ""
-    echo "Test your Travel Agent:"
-    echo "  curl -X POST http://$EXTERNAL_IP/task \\"
-    echo "    -H \"Content-Type: application/json\" \\"
-    echo "    -d '{\"task\": \"What is the exchange rate from USD to EUR?\"}'"
-fi
+echo "🎉 Deployment complete!"
+echo ""
+echo "🔒 Services are internal ClusterIP services."
+echo "Test your Travel Agent:"
+echo "  kubectl port-forward -n multiagent svc/travel-agent-service 8080:80"
+echo "  API_KEY=\$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)"
+echo "  curl -X POST http://localhost:8080/task \\"
+echo "    -H \"Content-Type: application/json\" \\"
+echo "    -H \"X-API-Key: \$API_KEY\" \\"
+echo "    -H \"X-User-ID: test-user\" \\"
+echo "    -d '{\"task\": \"What is the exchange rate from USD to EUR?\"}'"

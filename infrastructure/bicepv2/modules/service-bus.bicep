@@ -29,10 +29,10 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview
   }
 }
 
-// Queue for agent requests
-resource agentRequestQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
+// Queue for agent tasks
+resource agentTaskQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
   parent: serviceBusNamespace
-  name: 'agent-requests'
+  name: 'agent-tasks'
   properties: {
     lockDuration: 'PT1M'
     maxSizeInMegabytes: 1024
@@ -53,7 +53,7 @@ resource agentResponseQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-p
     lockDuration: 'PT1M'
     maxSizeInMegabytes: 1024
     requiresDuplicateDetection: false
-    requiresSession: false
+    requiresSession: true
     defaultMessageTimeToLive: 'P1D'
     deadLetteringOnMessageExpiration: true
     maxDeliveryCount: 10
@@ -115,6 +115,6 @@ resource serviceBusAuthRule 'Microsoft.ServiceBus/namespaces/authorizationRules@
 output serviceBusNamespace string = serviceBusNamespace.name
 output serviceBusEndpoint string = serviceBusNamespace.properties.serviceBusEndpoint
 output serviceBusId string = serviceBusNamespace.id
-output agentRequestQueueName string = agentRequestQueue.name
+output agentTaskQueueName string = agentTaskQueue.name
 output agentResponseQueueName string = agentResponseQueue.name
 output agentTopicName string = agentTopic.name

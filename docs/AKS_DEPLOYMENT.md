@@ -35,7 +35,7 @@ This script will:
 4. Configure Workload Identity
 5. Deploy all services to AKS
 6. Wait for pods to be ready
-7. Get the Travel Agent external IP
+7. Configure internal services with API-key authentication
 
 ### Option 2: Manual Deployment
 
@@ -83,6 +83,9 @@ AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
 # Create namespace
 kubectl apply -f k8s/namespace-and-sa.yaml
 
+# Create the shared API authentication secret used by the UI, orchestrator, and agents
+scripts/ensure-api-auth.sh multiagent
+
 # Deploy services with variable substitution
 cat k8s/currency-mcp-deployment.yaml | \
   sed "s/\${ACR_NAME}/$ACR_NAME/g" | \
@@ -98,6 +101,8 @@ cat k8s/travel-agent-deployment.yaml | \
   sed "s/\${WORKLOAD_IDENTITY_CLIENT_ID}/$WORKLOAD_IDENTITY_CLIENT_ID/g" | \
   sed "s/\${AZURE_TENANT_ID}/$AZURE_TENANT_ID/g" | \
   kubectl apply -f -
+
+kubectl apply -f k8s/network-policies.yaml
 ```
 
 ## Verify Deployment
@@ -130,35 +135,40 @@ Expected output:
 NAME                     TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 currency-mcp-service     ClusterIP      10.0.x.x       <none>          8001/TCP       2m
 activity-mcp-service     ClusterIP      10.0.x.x       <none>          8002/TCP       2m
-travel-agent-service     LoadBalancer   10.0.x.x       20.x.x.x        80:xxxxx/TCP   2m
+travel-agent-service     ClusterIP      10.0.x.x       <none>          80/TCP         2m
 ```
 
-### Get Travel Agent External IP
+### Access Services Securely
 
-```bash
-kubectl get service travel-agent-service -n multiagent -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-```
+Services are internal `ClusterIP` services by default. Use `kubectl port-forward` for development, or expose the Streamlit UI through an authenticated ingress, Azure Application Gateway, or API Management. Do not expose the orchestrator or agent services directly to the public internet.
 
 ## Test the Deployment
 
-Once you have the external IP, test the Travel Agent:
+Port-forward the travel agent for local testing:
 
 ```bash
-EXTERNAL_IP=$(kubectl get service travel-agent-service -n multiagent -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+kubectl port-forward -n multiagent service/travel-agent-service 8080:80
+API_KEY=$(kubectl get secret multiagent-api-auth -n multiagent -o jsonpath='{.data.api-key}' | base64 -d)
 
 # Test currency exchange
-curl -X POST http://$EXTERNAL_IP/task \
+curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "What is the exchange rate from USD to EUR?"}'
 
 # Test restaurant recommendations
-curl -X POST http://$EXTERNAL_IP/task \
+curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "Recommend restaurants in Paris"}'
 
 # Test itinerary planning with currency
-curl -X POST http://$EXTERNAL_IP/task \
+curl -X POST http://localhost:8080/task \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-User-ID: test-user" \
   -d '{"task": "Plan a 2-day trip to Tokyo with 500 USD budget. How much is that in JPY?"}'
 ```
 

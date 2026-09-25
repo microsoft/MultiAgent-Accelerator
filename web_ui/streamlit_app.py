@@ -5,9 +5,20 @@ from datetime import datetime
 import time
 import os
 import ast
+import uuid
 
 # Configuration - use environment variable or default
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://4.150.144.45")
+MULTIAGENT_API_KEY = os.getenv("MULTIAGENT_API_KEY") or os.getenv("API_KEY")
+
+
+def build_headers(user_id=None):
+    headers = {}
+    if MULTIAGENT_API_KEY:
+        headers["X-API-Key"] = MULTIAGENT_API_KEY
+    if user_id:
+        headers["X-User-ID"] = user_id
+    return headers
 
 def parse_agent_response(result_str, agent_name):
     """
@@ -123,7 +134,10 @@ with st.sidebar:
     st.title("🤖 Multi-Agent System")
     st.markdown("### Settings")
     orchestrator_url = st.text_input("Orchestrator URL", value=ORCHESTRATOR_URL)
-    user_id = st.text_input("User ID", value="streamlit-user")
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = os.getenv("STREAMLIT_USER_ID") or f"streamlit-{uuid.uuid4()}"
+    user_id = st.session_state.user_id
+    st.caption(f"User ID: `{user_id}`")
     
     st.markdown("---")
     st.markdown("### Navigation")
@@ -141,7 +155,11 @@ if page == "🏠 Dashboard":
             st.rerun()
     
     try:
-        response = requests.get(f"{orchestrator_url}/agents", timeout=5)
+        response = requests.get(
+            f"{orchestrator_url}/agents",
+            headers=build_headers(),
+            timeout=5,
+        )
         if response.status_code == 200:
             agents_data = response.json()
             total_agents = agents_data.get("total_agents", 0)
@@ -282,6 +300,7 @@ elif page == "📝 Submit Task":
                 response = requests.post(
                     f"{orchestrator_url}{endpoint}",
                     json=payload,
+                    headers=build_headers(user_id),
                     timeout=30
                 )
                 
@@ -378,18 +397,15 @@ elif page == "🔍 Async Responses":
     
     st.info("💡 **Tip:** Async tasks are processed in the background. Responses appear here when ready.")
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        user_filter = st.text_input("Filter by User ID (or 'all' for all users):", value=user_id)
-    with col2:
-        max_msgs = st.number_input("Max messages:", min_value=1, max_value=50, value=10)
+    max_msgs = st.number_input("Max messages:", min_value=1, max_value=50, value=10)
     
     if st.button("🔄 Fetch Responses", use_container_width=True, type="primary"):
         with st.spinner("Fetching responses from Service Bus..."):
             try:
                 response = requests.get(
-                    f"{orchestrator_url}/responses/{user_filter}",
+                    f"{orchestrator_url}/responses",
                     params={"max_messages": max_msgs},
+                    headers=build_headers(user_id),
                     timeout=10
                 )
                 
@@ -432,8 +448,8 @@ elif page == "🔍 Async Responses":
        bash scripts/view-async-responses.sh
        ```
     
-    2. **Future enhancement**: Add a `/responses/{user_id}` endpoint to the orchestrator
-       to fetch responses directly from the Service Bus queue
+    2. The `/responses` endpoint returns responses for the principal identified by the
+       API key, fetched directly from the Service Bus queue
     """)
     
     with st.expander("📋 Sample Response Format"):
